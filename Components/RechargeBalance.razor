@@ -1,0 +1,181 @@
+﻿@page "/balance/recharge"
+@using Microsoft.AspNetCore.Authorization
+@using NumeroEmpresarial.Core.Interfaces
+@using NumeroEmpresarial.Domain.Entities
+@inject IUserService UserService
+@inject IStripeService StripeService
+@inject ILocalizationService LocalizationService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@attribute [Authorize]
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">@LocalizedText("Balance.RechargeTitle")</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <div class="d-flex">
+                            <div class="me-3">
+                                <i class="fas fa-info-circle fa-2x"></i>
+                            </div>
+                            <div>
+                                <p class="mb-0">@LocalizedText("Balance.CurrentBalance"): <strong>$@_currentBalance.ToString("F2")</strong></p>
+                                <p class="mb-0 small">@LocalizedText("Balance.BalanceDescription")</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <EditForm Model="@_rechargeModel" OnValidSubmit="ProcessRechargeAsync">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="mb-4 mt-4">
+                            <label for="amount" class="form-label">@LocalizedText("Balance.AmountToRecharge")</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input id="amount" class="form-control" type="number" step="0.01" min="5" @bind="_rechargeModel.Amount" placeholder="20.00" />
+                            </div>
+                            <div class="form-text">@LocalizedText("Balance.MinimumAmount") $5.00</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label">@LocalizedText("Balance.ChooseAmount"):</label>
+                            <div class="d-flex justify-content-between flex-wrap">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="predefinedAmount" id="amount10" value="10" checked="@(_rechargeModel.Amount == 10)" @onclick="() => SetPredefinedAmount(10)" />
+                                    <label class="form-check-label" for="amount10">$10</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="predefinedAmount" id="amount20" value="20" checked="@(_rechargeModel.Amount == 20)" @onclick="() => SetPredefinedAmount(20)" />
+                                    <label class="form-check-label" for="amount20">$20</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="predefinedAmount" id="amount50" value="50" checked="@(_rechargeModel.Amount == 50)" @onclick="() => SetPredefinedAmount(50)" />
+                                    <label class="form-check-label" for="amount50">$50</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="predefinedAmount" id="amount100" value="100" checked="@(_rechargeModel.Amount == 100)" @onclick="() => SetPredefinedAmount(100)" />
+                                    <label class="form-check-label" for="amount100">$100</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-light border mb-4">
+                            <h6 class="mb-3">@LocalizedText("Payment.SecurePayment")</h6>
+                            <div class="d-flex justify-content-between">
+                                <img src="images/visa.png" alt="Visa" height="30" />
+                                <img src="images/mastercard.png" alt="Mastercard" height="30" />
+                                <img src="images/amex.png" alt="American Express" height="30" />
+                                <img src="images/stripe.png" alt="Stripe" height="30" />
+                            </div>
+                            <p class="small text-muted mt-2 mb-0">
+                                @LocalizedText("Payment.SecurePaymentDesc")
+                            </p>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary" disabled="@_isProcessing">
+                                @if (_isProcessing)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    <span class="ms-2">@LocalizedText("Common.Processing")</span>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-credit-card me-2"></i>
+                                    <span>@LocalizedText("Payment.ProceedToPayment")</span>
+                                }
+                            </button>
+                            <a href="/" class="btn btn-outline-secondary">@LocalizedText("Common.Cancel")</a>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private class RechargeModel
+    {
+        public decimal Amount { get; set; } = 20;
+    }
+
+    private string _currentLanguage = "es";
+    private Guid _currentUserId = Guid.Empty;
+    private decimal _currentBalance = 0;
+    private RechargeModel _rechargeModel = new();
+    private bool _isProcessing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener idioma actual
+        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+
+        // TODO: Obtener el ID del usuario actual (desde el servicio de autenticación)
+        _currentUserId = Guid.Parse("00000000-0000-0000-0000-000000000000"); // Reemplazar con el ID real
+
+        // Cargar saldo del usuario
+        await LoadUserBalanceAsync();
+    }
+
+    private async Task LoadUserBalanceAsync()
+    {
+        try
+        {
+            var user = await UserService.GetUserByIdAsync(_currentUserId);
+            if (user != null)
+            {
+                _currentBalance = user.Balance;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error loading user balance: {ex.Message}");
+        }
+    }
+
+    private void SetPredefinedAmount(decimal amount)
+    {
+        _rechargeModel.Amount = amount;
+    }
+
+    private async Task ProcessRechargeAsync()
+    {
+        if (_rechargeModel.Amount < 5)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", await LocalizedText("Balance.AmountTooSmall"));
+            return;
+        }
+
+        try
+        {
+            _isProcessing = true;
+
+            // Crear sesión de pago con Stripe
+            string sessionId = await StripeService.CreateCheckoutSessionAsync(
+                _currentUserId,
+                _rechargeModel.Amount,
+                await LocalizedText("Balance.RechargeDescription")
+            );
+
+            // Redirigir a la página de pago de Stripe
+            NavigationManager.NavigateTo($"/payment/checkout?sessionId={sessionId}");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            _isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<string> LocalizedText(string key)
+    {
+        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+    }
+}

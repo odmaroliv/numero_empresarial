@@ -1,0 +1,434 @@
+﻿@page "/phonenumbers/{PhoneNumberId:guid}/windows"
+@using Microsoft.AspNetCore.Authorization
+@using NumeroEmpresarial.Core.Interfaces
+@using NumeroEmpresarial.Domain.Entities
+@using NumeroEmpresarial.Domain.DTOs
+@inject IPhoneNumberService PhoneNumberService
+@inject IMessageWindowService MessageWindowService
+@inject IUserService UserService
+@inject ILocalizationService LocalizationService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@attribute [Authorize]
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>@LocalizedText("MessageWindow.Title") - @_phoneNumber?.Number</h1>
+    <button class="btn btn-primary" @onclick="ShowCreateWindowModal">
+        <i class="fas fa-plus me-2"></i>@LocalizedText("MessageWindow.Create")
+    </button>
+</div>
+
+@if (_isLoading)
+{
+    <div class="d-flex justify-content-center my-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">@LocalizedText("Common.Loading")</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">@LocalizedText("MessageWindow.List")</h5>
+                </div>
+                <div class="card-body">
+                    @if (_messageWindows.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>@LocalizedText("MessageWindow.Created")</th>
+                                        <th>@LocalizedText("MessageWindow.TimeWindow")</th>
+                                        <th>@LocalizedText("MessageWindow.Messages")</th>
+                                        <th>@LocalizedText("Common.Status")</th>
+                                        <th>@LocalizedText("Common.Cost")</th>
+                                        <th class="text-end">@LocalizedText("Common.Actions")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var window in _messageWindows)
+                                    {
+                                        <tr>
+                                            <td>@window.StartTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                            <td>
+                                                @window.StartTime.ToLocalTime().ToString("HH:mm") - @window.EndTime.ToLocalTime().ToString("HH:mm")
+                                                <br />
+                                                <small class="text-muted">@((window.EndTime - window.StartTime).TotalMinutes) @LocalizedText("Common.Minutes")</small>
+                                            </td>
+                                            <td>
+                                                @window.ReceivedMessages / @window.MaxMessages
+                                                @if (window.Messages.Any())
+                                                {
+                                                    <br />
+                                                    <a href="/messagewindows/@window.Id/messages" class="small">@LocalizedText("MessageWindow.ViewDetails")</a>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (IsWindowActive(window))
+                                                {
+                                                    <span class="badge bg-success">@LocalizedText("Common.Active")</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary">@LocalizedText("Common.Inactive")</span>
+                                                }
+                                            </td>
+                                            <td>$@window.WindowCost.ToString("F2")</td>
+                                            <td class="text-end">
+                                                <a href="/messagewindows/@window.Id/messages" class="btn btn-sm btn-info me-2">
+                                                    <i class="fas fa-envelope me-1"></i> @LocalizedText("MessageWindow.Messages")
+                                                </a>
+                                                @if (IsWindowActive(window))
+                                                {
+                                                    <button class="btn btn-sm btn-warning" @onclick="() => ShowCloseWindowModal(window)">
+                                                        <i class="fas fa-times-circle me-1"></i> @LocalizedText("MessageWindow.Close")
+                                                    </button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            @LocalizedText("MessageWindow.NoWindows")
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">@LocalizedText("MessageWindow.Info")</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <h5><i class="fas fa-lightbulb me-2"></i> @LocalizedText("MessageWindow.HowItWorks")</h5>
+                        <p>@LocalizedText("MessageWindow.HowItWorksDesc")</p>
+                        <ul>
+                            <li>@LocalizedText("MessageWindow.Feature1")</li>
+                            <li>@LocalizedText("MessageWindow.Feature2")</li>
+                            <li>@LocalizedText("MessageWindow.Feature3")</li>
+                            <li>@LocalizedText("MessageWindow.Feature4")</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showCreateModal)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@LocalizedText("MessageWindow.Create")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseCreateWindowModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@_createModel" OnValidSubmit="CreateMessageWindow">
+                        <DataAnnotationsValidator />
+
+                        <div class="mb-3">
+                            <label for="duration" class="form-label">@LocalizedText("MessageWindow.Duration") (@LocalizedText("Common.Minutes"))</label>
+                            <input id="duration" type="number" class="form-control" @bind="_createModel.DurationMinutes" min="5" max="120" step="5" />
+                            <div class="form-text">@LocalizedText("MessageWindow.DurationHelp")</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="maxMessages" class="form-label">@LocalizedText("MessageWindow.MaxMessages")</label>
+                            <input id="maxMessages" type="number" class="form-control" @bind="_createModel.MaxMessages" min="1" max="100" />
+                            <div class="form-text">@LocalizedText("MessageWindow.MaxMessagesHelp")</div>
+                        </div>
+
+                        <div class="alert alert-primary">
+                            <div class="d-flex justify-content-between">
+                                <span>@LocalizedText("Common.Cost"):</span>
+                                <strong>$@_createModel.Cost.ToString("F2")</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>@LocalizedText("Common.Balance"):</span>
+                                <strong>$@_userBalance.ToString("F2")</strong>
+                            </div>
+                        </div>
+
+                        @if (_createError != null)
+                        {
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                @_createError
+                            </div>
+                        }
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary" disabled="@_isCreating">
+                                @if (_isCreating)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    <span class="ms-2">@LocalizedText("Common.Processing")</span>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-check me-2"></i>
+                                    <span>@LocalizedText("Common.Create")</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (_showCloseModal)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@LocalizedText("MessageWindow.CloseConfirm")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModalWindows"></button>
+                </div>
+                <div class="modal-body">
+                    <p>@LocalizedText("MessageWindow.CloseWarning")</p>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        @LocalizedText("MessageWindow.CloseWarningDetails")
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModalWindows">@LocalizedText("Common.Cancel")</button>
+                    <button type="button" class="btn btn-danger" @onclick="CloseMessageWindow" disabled="@_isClosing">
+                        @if (_isClosing)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            <span class="ms-2">@LocalizedText("Common.Processing")</span>
+                        }
+                        else
+                        {
+                            <i class="fas fa-times-circle me-2"></i>
+                            <span>@LocalizedText("MessageWindow.Close")</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    [Parameter]
+    public string PhoneNumberId { get; set; }
+
+    private class CreateWindowModel
+    {
+        public int DurationMinutes { get; set; } = 10;
+        public int MaxMessages { get; set; } = 10;
+        public decimal Cost { get; set; } = 0.50m;
+    }
+
+    private string _currentLanguage = "es";
+    private bool _isLoading = true;
+    private PhoneNumber _phoneNumber;
+    private List<MessageWindowDto> _messageWindows = new();
+    private decimal _userBalance = 0;
+    private Guid _currentUserId = Guid.Empty;
+
+    // Create window modal
+    private bool _showCreateModal = false;
+    private CreateWindowModel _createModel = new();
+    private bool _isCreating = false;
+    private string _createError = null;
+
+    // Close window modal
+    private bool _showCloseModal = false;
+    private MessageWindowDto _selectedWindow;
+    private bool _isClosing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener idioma actual
+        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+
+        // TODO: Obtener el ID del usuario actual (desde el servicio de autenticación)
+        _currentUserId = Guid.Parse("00000000-0000-0000-0000-000000000000"); // Reemplazar con el ID real
+
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _isLoading = true;
+
+            // Cargar datos del número de teléfono
+            var phoneNumberIdGuid = Guid.Parse(PhoneNumberId);
+            _phoneNumber = await PhoneNumberService.GetPhoneNumberByIdAsync(phoneNumberIdGuid);
+
+            if (_phoneNumber == null || _phoneNumber.UserId != _currentUserId)
+            {
+                NavigationManager.NavigateTo("/phonenumbers");
+                return;
+            }
+
+            // Cargar ventanas de mensaje
+            _messageWindows = await MessageWindowService.GetWindowsByPhoneNumberIdAsync(phoneNumberIdGuid);
+
+            // Cargar saldo del usuario
+            var user = await UserService.GetUserByIdAsync(_currentUserId);
+            if (user != null)
+            {
+                _userBalance = user.Balance;
+            }
+
+            // Actualizar precio según plan
+            await UpdateWindowCostFromPlan();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UpdateWindowCostFromPlan()
+    {
+        try
+        {
+            var subscription = await UserService.GetActiveSubscriptionAsync(_currentUserId);
+            if (subscription != null && subscription.Plan != null)
+            {
+                _createModel.DurationMinutes = subscription.Plan.WindowDuration;
+                _createModel.Cost = subscription.Plan.WindowCost;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error loading plan data: {ex.Message}");
+        }
+    }
+
+    private bool IsWindowActive(MessageWindowDto window)
+    {
+        return window.Active && window.EndTime > DateTime.UtcNow && window.ReceivedMessages < window.MaxMessages;
+    }
+
+    private void ShowCreateWindowModal()
+    {
+        _createError = null;
+        _showCreateModal = true;
+    }
+
+    private void CloseCreateWindowModal()
+    {
+        _showCreateModal = false;
+    }
+
+    private void ShowCloseWindowModal(MessageWindowDto window)
+    {
+        _selectedWindow = window;
+        _showCloseModal = true;
+    }
+
+    private void CloseModalWindows()
+    {
+        _showCloseModal = false;
+    }
+
+    private async Task CreateMessageWindow()
+    {
+        if (_createModel.DurationMinutes < 5)
+        {
+            _createError = await LocalizedText("MessageWindow.DurationTooShort");
+            return;
+        }
+
+        if (_userBalance < _createModel.Cost)
+        {
+            _createError = await LocalizedText("Common.InsufficientBalance");
+            return;
+        }
+
+        try
+        {
+            _isCreating = true;
+
+            var phoneNumberIdGuid = Guid.Parse(PhoneNumberId);
+
+            // Crear ventana de mensajes
+            await MessageWindowService.CreateMessageWindowAsync(
+                phoneNumberIdGuid,
+                _createModel.DurationMinutes,
+                _createModel.MaxMessages,
+                _createModel.Cost);
+
+            // Recargar datos
+            await LoadDataAsync();
+
+            // Cerrar modal
+            _showCreateModal = false;
+        }
+        catch (Exception ex)
+        {
+            _createError = ex.Message;
+        }
+        finally
+        {
+            _isCreating = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CloseMessageWindow()
+    {
+        try
+        {
+            _isClosing = true;
+
+            // Cerrar ventana de mensajes
+            await MessageWindowService.CloseWindowAsync(_selectedWindow.Id);
+
+            // Recargar datos
+            await LoadDataAsync();
+
+            // Cerrar modal
+            _showCloseModal = false;
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isClosing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<string> LocalizedText(string key)
+    {
+        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+    }
+}

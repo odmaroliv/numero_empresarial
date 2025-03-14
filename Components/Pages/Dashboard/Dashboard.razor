@@ -1,0 +1,393 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Authorization
+@using NumeroEmpresarial.Core.Interfaces
+@using NumeroEmpresarial.Domain.Entities
+@using NumeroEmpresarial.Domain.DTOs
+@inject IUserService UserService
+@inject IPhoneNumberService PhoneNumberService
+@inject IMessageWindowService MessageWindowService
+@inject ILocalizationService LocalizationService
+@inject IAuthenticationService AuthenticationService
+@inject IJSRuntime JSRuntime
+@attribute [Authorize]
+
+<h1>@LocalizedText("Dashboard.Title")</h1>
+
+@if (_isLoading)
+{
+    <div class="d-flex justify-content-center mt-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row mt-4">
+        <div class="col-xl-3 col-sm-6 mb-4">
+            <div class="card">
+                <div class="card-body p-3">
+                    <div class="row">
+                        <div class="col-8">
+                            <div class="numbers">
+                                <p class="text-sm mb-0 text-capitalize font-weight-bold">@LocalizedText("Dashboard.Balance")</p>
+                                <h5 class="font-weight-bolder mb-0">
+                                    $@_userBalance.ToString("F2")
+                                </h5>
+                            </div>
+                        </div>
+                        <div class="col-4 text-end">
+                            <div class="icon icon-shape bg-gradient-primary shadow text-center rounded-circle">
+                                <i class="fas fa-wallet text-lg opacity-10"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-sm-6 mb-4">
+            <div class="card">
+                <div class="card-body p-3">
+                    <div class="row">
+                        <div class="col-8">
+                            <div class="numbers">
+                                <p class="text-sm mb-0 text-capitalize font-weight-bold">@LocalizedText("Dashboard.ActiveNumbers")</p>
+                                <h5 class="font-weight-bolder mb-0">
+                                    @_activePhoneNumbers.Count
+                                </h5>
+                            </div>
+                        </div>
+                        <div class="col-4 text-end">
+                            <div class="icon icon-shape bg-gradient-success shadow text-center rounded-circle">
+                                <i class="fas fa-phone text-lg opacity-10"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-sm-6 mb-4">
+            <div class="card">
+                <div class="card-body p-3">
+                    <div class="row">
+                        <div class="col-8">
+                            <div class="numbers">
+                                <p class="text-sm mb-0 text-capitalize font-weight-bold">@LocalizedText("Dashboard.ActiveWindows")</p>
+                                <h5 class="font-weight-bolder mb-0">
+                                    @_activeWindows.Count
+                                </h5>
+                            </div>
+                        </div>
+                        <div class="col-4 text-end">
+                            <div class="icon icon-shape bg-gradient-info shadow text-center rounded-circle">
+                                <i class="fas fa-comment-alt text-lg opacity-10"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-sm-6 mb-4">
+            <div class="card">
+                <div class="card-body p-3">
+                    <div class="row">
+                        <div class="col-8">
+                            <div class="numbers">
+                                <p class="text-sm mb-0 text-capitalize font-weight-bold">@LocalizedText("Dashboard.TotalMessages")</p>
+                                <h5 class="font-weight-bolder mb-0">
+                                    @_totalMessages
+                                </h5>
+                            </div>
+                        </div>
+                        <div class="col-4 text-end">
+                            <div class="icon icon-shape bg-gradient-warning shadow text-center rounded-circle">
+                                <i class="fas fa-envelope text-lg opacity-10"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-lg-8 mb-4">
+            <div class="card">
+                <div class="card-header pb-0">
+                    <h6>@LocalizedText("Dashboard.MyNumbers")</h6>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-success">@_activePhoneNumbers.Count @LocalizedText("Dashboard.Active")</span>
+                        <a href="/phonenumbers/search" class="btn btn-primary btn-sm ms-auto">
+                            <i class="fas fa-plus"></i> @LocalizedText("Dashboard.NewNumber")
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body px-0 pt-0 pb-2">
+                    <div class="table-responsive p-0">
+                        <table class="table align-items-center mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">@LocalizedText("PhoneNumber.Number")</th>
+                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">@LocalizedText("PhoneNumber.Redirection")</th>
+                                    <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">@LocalizedText("Common.Status")</th>
+                                    <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">@LocalizedText("Common.Actions")</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (_activePhoneNumbers.Any())
+                                {
+                                    @foreach (var phoneNumber in _activePhoneNumbers)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div class="d-flex px-2 py-1">
+                                                    <div class="d-flex flex-column justify-content-center">
+                                                        <h6 class="mb-0 text-sm">@phoneNumber.Number</h6>
+                                                        <p class="text-xs text-secondary mb-0">@LocalizedText("Common.Since"): @phoneNumber.AcquisitionDate.ToShortDateString()</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <p class="text-xs font-weight-bold mb-0">@phoneNumber.RedirectionNumber</p>
+                                            </td>
+                                            <td class="align-middle text-center text-sm">
+                                                @if (phoneNumber.Active)
+                                                {
+                                                    <span class="badge bg-success">@LocalizedText("Common.Active")</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary">@LocalizedText("Common.Inactive")</span>
+                                                }
+                                            </td>
+                                            <td class="align-middle text-center">
+                                                <a href="/phonenumbers/@phoneNumber.Id/windows" class="btn btn-link text-dark px-3 mb-0">
+                                                    <i class="fas fa-comment-alt text-dark me-2"></i>@LocalizedText("PhoneNumber.Windows")
+                                                </a>
+                                                <a href="/phonenumbers/@phoneNumber.Id/edit" class="btn btn-link text-info px-3 mb-0">
+                                                    <i class="fas fa-pencil-alt text-info me-2"></i>@LocalizedText("Common.Edit")
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center">
+                                            <p class="text-sm py-3">@LocalizedText("PhoneNumber.NoActive") <a href="/phonenumbers/search">@LocalizedText("PhoneNumber.GetOneNow")</a>.</p>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header pb-0">
+                    <h6>@LocalizedText("Dashboard.ActiveWindows")</h6>
+                </div>
+                <div class="card-body p-3">
+                    @if (_activeWindows.Any())
+                    {
+                        @foreach (var window in _activeWindows)
+                        {
+                            <div class="timeline timeline-one-side">
+                                <div class="timeline-block mb-3">
+                                    <span class="timeline-step">
+                                        <i class="fas fa-comment-alt text-success"></i>
+                                    </span>
+                                    <div class="timeline-content">
+                                        <h6 class="text-dark text-sm font-weight-bold mb-0">@window.PhoneNumber.Number</h6>
+                                        <p class="text-secondary font-weight-bold text-xs mt-1 mb-0">
+                                            @window.StartTime.ToString("HH:mm") - @window.EndTime.ToString("HH:mm")
+                                        </p>
+                                        <p class="text-sm mt-3 mb-2">
+                                            @LocalizedText("MessageWindow.Messages"): @window.ReceivedMessages / @window.MaxMessages
+                                        </p>
+                                        <a href="/messagewindows/@window.Id" class="btn btn-outline-primary btn-sm">
+                                            @LocalizedText("MessageWindow.ViewMessages")
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center py-4">
+                            <p class="text-sm mb-3">@LocalizedText("MessageWindow.NoActive")</p>
+                            @if (_activePhoneNumbers.Any())
+                            {
+                                <a href="/phonenumbers/@_activePhoneNumbers.First().Id/windows/create" class="btn btn-sm btn-outline-primary">
+                                    @LocalizedText("MessageWindow.CreateOne")
+                                </a>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header pb-0">
+                    <h6>@LocalizedText("Dashboard.RecentTransactions")</h6>
+                </div>
+                <div class="card-body px-0 pt-0 pb-2">
+                    <div class="table-responsive p-0">
+                        <table class="table align-items-center mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">@LocalizedText("Transaction.Date")</th>
+                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">@LocalizedText("Common.Description")</th>
+                                    <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">@LocalizedText("Transaction.Type")</th>
+                                    <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">@LocalizedText("Transaction.Amount")</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (_recentTransactions.Any())
+                                {
+                                    @foreach (var transaction in _recentTransactions)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div class="d-flex px-2 py-1">
+                                                    <div class="d-flex flex-column justify-content-center">
+                                                        <h6 class="mb-0 text-sm">@transaction.TransactionDate.ToShortDateString()</h6>
+                                                        <p class="text-xs text-secondary mb-0">@transaction.TransactionDate.ToString("HH:mm")</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <p class="text-xs font-weight-bold mb-0">@transaction.Description</p>
+                                            </td>
+                                            <td class="align-middle text-center text-sm">
+                                                <span class="badge @GetTransactionTypeClass(transaction.Type)">
+                                                    @LocalizedText($"TransactionType.{transaction.Type}")
+                                                </span>
+                                            </td>
+                                            <td class="align-middle text-center">
+                                                <span class="text-secondary text-xs font-weight-bold">
+                                                    @if (transaction.Amount > 0)
+                                                    {
+                                                        <span class="text-success">+$@transaction.Amount.ToString("F2")</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-danger">-$@Math.Abs(transaction.Amount).ToString("F2")</span>
+                                                    }
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center">
+                                            <p class="text-sm py-3">@LocalizedText("Transaction.NoRecent")</p>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _currentLanguage = "es";
+    private bool _isLoading = true;
+    private decimal _userBalance = 0;
+    private List<PhoneNumber> _activePhoneNumbers = new();
+    private List<MessageWindowDto> _activeWindows = new();
+    private List<Transaction> _recentTransactions = new();
+    private int _totalMessages = 0;
+    private Guid _currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener idioma actual
+        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+
+        // Obtener el ID del usuario actual desde el servicio de autenticación
+        try
+        {
+            _currentUserId = await AuthenticationService.GetCurrentUserIdAsync();
+            await LoadDashboardDataAsync();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Manejar el caso en que el usuario no esté autenticado
+            // En un entorno de producción real, deberíamos redirigir a la página de login
+            _isLoading = false;
+            await JSRuntime.InvokeVoidAsync("alert", "No se ha podido verificar su sesión. Por favor, inicie sesión nuevamente.");
+        }
+    }
+
+    private async Task LoadDashboardDataAsync()
+    {
+        try
+        {
+            _isLoading = true;
+
+            // Cargar datos del usuario
+            var user = await UserService.GetUserByIdAsync(_currentUserId);
+            if (user != null)
+            {
+                _userBalance = user.Balance;
+            }
+
+            // Cargar números de teléfono activos
+            _activePhoneNumbers = await PhoneNumberService.GetActivePhoneNumbersForUserAsync(_currentUserId);
+
+            // Cargar ventanas de mensaje activas
+            _activeWindows = await MessageWindowService.GetActiveWindowsForUserAsync(_currentUserId);
+
+            // Cargar transacciones recientes
+            _recentTransactions = await UserService.GetRecentTransactionsAsync(_currentUserId, 5);
+
+            // Calcular total de mensajes
+            _totalMessages = await MessageWindowService.GetTotalMessagesCountForUserAsync(_currentUserId);
+        }
+        catch (Exception ex)
+        {
+            // Manejar error
+            Console.Error.WriteLine($"Error loading dashboard data: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetTransactionTypeClass(Domain.Enums.TransactionType type)
+    {
+        return type switch
+        {
+            Domain.Enums.TransactionType.Deposit => "bg-success",
+            Domain.Enums.TransactionType.PhoneNumberPurchase => "bg-primary",
+            Domain.Enums.TransactionType.MessageWindowCreation => "bg-info",
+            Domain.Enums.TransactionType.MessageCharge => "bg-warning",
+            Domain.Enums.TransactionType.Subscription => "bg-dark",
+            Domain.Enums.TransactionType.Refund => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+
+    private async Task<string> LocalizedText(string key)
+    {
+        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+    }
+}

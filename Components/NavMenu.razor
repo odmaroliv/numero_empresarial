@@ -1,0 +1,86 @@
+﻿@using NumeroEmpresarial.Core.Interfaces
+@inject ILocalizationService LocalizationService
+@inject IJSRuntime JSRuntime
+
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">@LocalizedText("Common.AppName")</a>
+        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </div>
+</div>
+
+<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
+    <nav class="flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <i class="fas fa-home"></i> @LocalizedText("Menu.Home")
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="phonenumbers">
+                <i class="fas fa-phone-alt"></i> @LocalizedText("Menu.PhoneNumbers")
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="messagewindows">
+                <i class="fas fa-comment-dots"></i> @LocalizedText("Menu.MessageWindows")
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="plans">
+                <i class="fas fa-gem"></i> @LocalizedText("Menu.Plans")
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="transactions">
+                <i class="fas fa-money-bill-wave"></i> @LocalizedText("Menu.Transactions")
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="balance">
+                <i class="fas fa-wallet"></i> @LocalizedText("Menu.Balance")
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="profile">
+                <i class="fas fa-user-circle"></i> @LocalizedText("Menu.Profile")
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3 mt-3">
+            <NavLink class="nav-link" href="api-docs">
+                <i class="fas fa-code"></i> @LocalizedText("Menu.ApiDocs")
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="help">
+                <i class="fas fa-question-circle"></i> @LocalizedText("Menu.Help")
+            </NavLink>
+        </div>
+    </nav>
+</div>
+
+@code {
+    private bool collapseNavMenu = true;
+    private string _currentLanguage = "es";
+
+    private string NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener idioma del navegador o de las cookies
+        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+    }
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+
+    private async Task<string> LocalizedText(string key)
+    {
+        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+    }
+}

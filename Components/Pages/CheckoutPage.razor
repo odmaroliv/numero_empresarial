@@ -1,0 +1,78 @@
+﻿@page "/payment/checkout"
+@using Microsoft.Extensions.Configuration
+@using NumeroEmpresarial.Core.Interfaces
+@inject IConfiguration Configuration
+@inject ILocalizationService LocalizationService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@attribute [Authorize]
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">@LocalizedText("Payment.CompletePayment")</h5>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-4">
+                        <div class="spinner-border text-primary" role="status" id="loading">
+                            <span class="visually-hidden">@LocalizedText("Common.Loading")</span>
+                        </div>
+                        <p class="mt-2">@LocalizedText("Payment.PreparingPayment")</p>
+                    </div>
+
+                    <div id="payment-element" class="d-none">
+                        <!-- Stripe.js injects the Payment Element -->
+                    </div>
+
+                    <div id="error-message" class="alert alert-danger mt-3 d-none">
+                        <!-- Display error message here -->
+                    </div>
+
+                    <div class="mt-4 text-center">
+                        <a href="/" class="btn btn-outline-secondary">@LocalizedText("Common.Cancel")</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery]
+    public string SessionId { get; set; }
+
+    private string _currentLanguage = "es";
+    private string _stripePublicKey;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener idioma actual
+        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+
+        // Obtener clave pública de Stripe
+        _stripePublicKey = Configuration["Stripe:PublicKey"];
+
+        if (string.IsNullOrEmpty(SessionId))
+        {
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Inicializar Stripe y redirigir al checkout
+            await JSRuntime.InvokeVoidAsync("initStripeCheckout", _stripePublicKey, SessionId);
+        }
+    }
+
+    private async Task<string> LocalizedText(string key)
+    {
+        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+    }
+}

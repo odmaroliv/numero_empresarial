@@ -1,0 +1,156 @@
+# Configuración de entorno para producción
+
+# Variables de entorno principales
+environment: production
+app:
+  name: NumeroEmpresarial
+  url: https://tudominio.com
+  api_url: https://api.tudominio.com
+  admin_email: admin@tudominio.com
+  default_language: es
+
+# Configuración de Base de Datos
+database:
+  host: postgres
+  port: 5432
+  name: NumeroEmpresarial
+  user: ${POSTGRES_USER}
+  password: ${POSTGRES_PASSWORD}
+  ssl_mode: require
+  max_connections: 100
+  connection_lifetime: 300  # segundos
+  connection_timeout: 30    # segundos
+  retry_count: 5
+  retry_interval: 10        # segundos
+  enable_sensitive_data_logging: false
+
+# Configuración de Plivo
+plivo:
+  auth_id: ${PLIVO_AUTH_ID}
+  auth_token: ${PLIVO_AUTH_TOKEN}
+  api_version: v1
+  callback_url: https://tudominio.com/api/webhook/plivo/sms
+  log_incoming_messages: true
+  default_country: US
+  default_message_window_duration: 10  # minutos
+  default_message_window_max_messages: 10
+
+# Configuración de Stripe
+stripe:
+  public_key: ${STRIPE_PUBLIC_KEY}
+  secret_key: ${STRIPE_SECRET_KEY}
+  webhook_secret: ${STRIPE_WEBHOOK_SECRET}
+  success_url: https://tudominio.com/payment/success
+  cancel_url: https://tudominio.com/payment/cancel
+  subscription_success_url: https://tudominio.com/payment/subscription-success
+  currency: usd
+  payment_methods:
+    - card
+  statement_descriptor: NumeroEmp
+  statement_descriptor_suffix: SMS
+
+# Configuración de JWT (Autenticación)
+jwt:
+  secret_key: ${JWT_SECRET_KEY}
+  issuer: https://tudominio.com
+  audience: NumeroEmpresarial_API
+  expiration_minutes: 60
+  refresh_token_expiration_days: 7
+
+# Configuración de CORS
+cors:
+  allowed_origins:
+    - https://tudominio.com
+    - https://www.tudominio.com
+  allowed_methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+    - OPTIONS
+  allowed_headers:
+    - Content-Type
+    - Authorization
+    - X-XSRF-TOKEN
+
+# Configuración de Caché
+cache:
+  use_redis: true
+  redis_connection: ${REDIS_CONNECTION}
+  default_expiration: 3600  # segundos
+  sliding_expiration: true
+  localization_cache_duration: 86400  # 24 horas
+
+# Configuración de Logging
+logging:
+  level: Information
+  log_to_console: true
+  log_to_file: true
+  log_directory: /app/logs
+  file_size_limit: 10485760  # 10 MB
+  max_files: 10
+  include_scopes: true
+  log_sensitive_data: false
+
+# Configuración de Correo Electrónico
+email:
+  smtp_server: ${SMTP_SERVER}
+  smtp_port: ${SMTP_PORT}
+  smtp_username: ${SMTP_USERNAME}
+  smtp_password: ${SMTP_PASSWORD}
+  smtp_use_ssl: true
+  from_address: noreply@tudominio.com
+  from_name: Números Empresariales
+  template_directory: /app/templates/email
+
+# Configuración de Rendimiento
+performance:
+  use_response_compression: true
+  use_response_caching: true
+  use_static_files_caching: true
+  db_command_timeout: 30  # segundos
+  api_timeout: 30         # segundos
+  max_concurrent_connections: 100
+  thread_pool_min_threads: 10
+  thread_pool_max_threads: 100
+
+# Configuración de Tareas en Segundo Plano
+background_tasks:
+  enable_hangfire: true
+  hangfire_dashboard: true
+  dashboard_username: ${HANGFIRE_USER}
+  dashboard_password: ${HANGFIRE_PASSWORD}
+  cron_job_timezone: UTC
+  jobs:
+    cleanup_expired_windows: "0 0 * * *"     # Todos los días a medianoche
+    process_subscriptions: "0 1 * * *"       # Todos los días a la 1 AM
+    delete_old_messages: "0 2 * * 0"         # Todos los domingos a las 2 AM
+    database_backup: "0 3 * * *"             # Todos los días a las 3 AM
+
+# Configuración de Monitoreo
+monitoring:
+  enable_health_checks: true
+  health_check_endpoint: /health
+  enable_metrics: true
+  metrics_endpoint: /metrics
+  prometheus_enabled: true
+  enable_tracing: true
+
+# Configuración de Seguridad
+security:
+  enable_https_redirection: true
+  enable_strict_transport_security: true
+  hsts_max_age_days: 365
+  enable_xss_protection: true
+  enable_content_type_options: true
+  enable_frame_options: true
+  enable_content_security_policy: true
+  password_requirements:
+    min_length: 8
+    require_uppercase: true
+    require_lowercase: true
+    require_digit: true
+    require_special_character: true
+  failed_login_attempts: 5
+  lockout_minutes: 15
+  api_rate_limit_per_minute: 100

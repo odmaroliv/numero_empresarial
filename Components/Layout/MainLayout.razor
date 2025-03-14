@@ -1,0 +1,102 @@
+﻿@inherits LayoutComponentBase
+@inject ILocalizationService LocalizationService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            <div class="d-flex align-items-center">
+                <div class="dropdown me-3">
+                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="languageDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        @if (_currentLanguage == "es")
+                        {
+                            <span>🇪🇸 Español</span>
+                        }
+                        else
+                        {
+                            <span>🇺🇸 English</span>
+                        }
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="languageDropdown">
+                        <li><a class="dropdown-item @(_currentLanguage == "es" ? "active" : "")" href="#" @onclick="@(() => ChangeLanguage("es"))" @onclick:preventDefault>🇪🇸 Español</a></li>
+                        <li><a class="dropdown-item @(_currentLanguage == "en" ? "active" : "")" href="#" @onclick="@(() => ChangeLanguage("en"))" @onclick:preventDefault>🇺🇸 English</a></li>
+                    </ul>
+                </div>
+                
+                <a href="/Account/Profile" class="btn btn-outline-primary me-2">
+                    <i class="fas fa-user-circle"></i> @_userName
+                </a>
+                <a href="/Account/Logout" class="btn btn-outline-danger">
+                    <i class="fas fa-sign-out-alt"></i> @LocalizedText("Actions.Logout")
+                </a>
+            </div>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    private string _currentLanguage = "es";
+    private string _userName = "Usuario";
+    private IJSObjectReference _module;
+    private bool _isDisposed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener idioma del navegador o de las cookies
+        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+        
+        // Obtener nombre de usuario actual (si está autenticado)
+        // Esto debería venir de tu servicio de autenticación
+        _userName = "Usuario"; // Personaliza esto
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/mainLayout.js");
+        }
+    }
+
+    private async Task ChangeLanguage(string language)
+    {
+        if (_currentLanguage != language)
+        {
+            _currentLanguage = language;
+            
+            // Guardar preferencia de idioma
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "preferredLanguage", language);
+            
+            // Refrescar la página para aplicar el cambio de idioma
+            NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
+        }
+    }
+
+    private async Task<string> LocalizedText(string key)
+    {
+        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+    }
+    
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        if (!_isDisposed)
+        {
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+            
+            _isDisposed = true;
+        }
+    }
+}

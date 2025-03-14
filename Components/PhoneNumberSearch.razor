@@ -1,0 +1,386 @@
+﻿@page "/phonenumbers/search"
+@using Microsoft.AspNetCore.Authorization
+@using NumeroEmpresarial.Core.Interfaces
+@using NumeroEmpresarial.Core.Services
+@using NumeroEmpresarial.Domain.Entities
+@using NumeroEmpresarial.Domain.Enums
+@using Plivo.Resource.PhoneNumber
+@inject IPlivoService PlivoService
+@inject IPhoneNumberService PhoneNumberService
+@inject IUserService UserService
+@inject ILocalizationService LocalizationService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@attribute [Authorize]
+
+<h1>@LocalizedText("PhoneNumber.SearchTitle")</h1>
+
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>@LocalizedText("PhoneNumber.SearchCriteria")</h5>
+            </div>
+            <div class="card-body">
+                <EditForm Model="@_searchModel" OnValidSubmit="SearchNumbers">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+
+                    <div class="mb-3">
+                        <label for="countryCode" class="form-label">@LocalizedText("PhoneNumber.Country")</label>
+                        <select id="countryCode" class="form-select" @bind="_searchModel.CountryCode">
+                            <option value="US">@LocalizedText("Country.US")</option>
+                            <option value="CA">@LocalizedText("Country.CA")</option>
+                            <option value="GB">@LocalizedText("Country.GB")</option>
+                            <option value="AU">@LocalizedText("Country.AU")</option>
+                            <option value="ES">@LocalizedText("Country.ES")</option>
+                            <option value="MX">@LocalizedText("Country.MX")</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="type" class="form-label">@LocalizedText("PhoneNumber.Type")</label>
+                        <select id="type" class="form-select" @bind="_searchModel.Type">
+                            <option value="">@LocalizedText("Common.Any")</option>
+                            <option value="local">@LocalizedText("PhoneNumber.Type.Local")</option>
+                            <option value="tollfree">@LocalizedText("PhoneNumber.Type.TollFree")</option>
+                            <option value="mobile">@LocalizedText("PhoneNumber.Type.Mobile")</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="pattern" class="form-label">@LocalizedText("PhoneNumber.Pattern")</label>
+                        <input id="pattern" class="form-control" @bind="_searchModel.Pattern" placeholder="555, 800, etc." />
+                        <div class="form-text">@LocalizedText("PhoneNumber.PatternHelp")</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100" disabled="@_isSearching">
+                        @if (_isSearching)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            <span class="ms-2">@LocalizedText("Common.Searching")</span>
+                        }
+                        else
+                        {
+                            <i class="fas fa-search me-2"></i>
+                            <span>@LocalizedText("Common.Search")</span>
+                        }
+                    </button>
+                </EditForm>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5>@LocalizedText("Common.Balance")</h5>
+            </div>
+            <div class="card-body">
+                <h3 class="text-center mb-3">$@_userBalance.ToString("F2")</h3>
+                <a href="/balance/recharge" class="btn btn-success w-100">
+                    <i class="fas fa-plus me-2"></i>
+                    @LocalizedText("Balance.Recharge")
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>@LocalizedText("PhoneNumber.SearchResults")</h5>
+            </div>
+            <div class="card-body">
+                @if (_isSearching)
+                {
+                    <div class="d-flex justify-content-center my-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">@LocalizedText("Common.Loading")</span>
+                        </div>
+                    </div>
+                }
+                else if (_searchResults.Count == 0 && _hasSearched)
+                {
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        @LocalizedText("PhoneNumber.NoResults")
+                    </div>
+                }
+                else if (_searchResults.Count > 0)
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>@LocalizedText("PhoneNumber.Number")</th>
+                                    <th>@LocalizedText("PhoneNumber.Type")</th>
+                                    <th class="text-end">@LocalizedText("PhoneNumber.MonthlyCost")</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var number in _searchResults)
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@number.Number</strong>
+                                        </td>
+                                        <td>
+                                            @GetPhoneType(number.Type)
+                                        </td>
+                                        <td class="text-end">
+                                            $@(decimal.Parse(number.MonthlyRentalRate).ToString("F2"))/mes
+                                        </td>
+                                        <td class="text-end">
+                                            <button class="btn btn-sm btn-primary" @onclick="() => ShowRentModal(number)">
+                                                <i class="fas fa-shopping-cart me-1"></i> @LocalizedText("PhoneNumber.Rent")
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-5">
+                        <div class="mb-3">
+                            <i class="fas fa-search fa-4x text-muted"></i>
+                        </div>
+                        <p class="text-muted">@LocalizedText("PhoneNumber.SearchPrompt")</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_showRentModal)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@LocalizedText("PhoneNumber.RentNumber")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseRentModal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>@LocalizedText("PhoneNumber.RentConfirm")</p>
+                    <div class="alert alert-info">
+                        <strong>@_selectedNumber?.Number</strong><br />
+                        @LocalizedText("PhoneNumber.MonthlyCost"): <strong>$@(decimal.Parse(_selectedNumber?.MonthlyRentalRate ?? "0").ToString("F2"))</strong>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="redirectionNumber" class="form-label">@LocalizedText("PhoneNumber.RedirectionNumber")</label>
+                        <input id="redirectionNumber" type="tel" class="form-control" @bind="_redirectionNumber" placeholder="+1234567890" />
+                        <div class="form-text">@LocalizedText("PhoneNumber.RedirectionHelp")</div>
+                    </div>
+
+                    @if (_rentError != null)
+                    {
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            @_rentError
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseRentModal">@LocalizedText("Common.Cancel")</button>
+                    <button type="button" class="btn btn-primary" @onclick="RentPhoneNumber" disabled="@_isRenting">
+                        @if (_isRenting)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            <span class="ms-2">@LocalizedText("Common.Processing")</span>
+                        }
+                        else
+                        {
+                            <i class="fas fa-check me-2"></i>
+                            <span>@LocalizedText("Common.Confirm")</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private class SearchModel
+    {
+        public string CountryCode { get; set; } = "US";
+        public string Type { get; set; } = "";
+        public string Pattern { get; set; } = "";
+    }
+
+    private string _currentLanguage = "es";
+    private SearchModel _searchModel = new();
+    private List<PhoneNumberResource> _searchResults = new();
+    private bool _isSearching = false;
+    private bool _hasSearched = false;
+    private decimal _userBalance = 0;
+    private Guid _currentUserId = Guid.Empty;
+
+    // Modal variables
+    private bool _showRentModal = false;
+    private PhoneNumberResource _selectedNumber;
+    private string _redirectionNumber = "";
+    private bool _isRenting = false;
+    private string _rentError = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener idioma actual
+        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+
+        // TODO: Obtener el ID del usuario actual (desde el servicio de autenticación)
+        _currentUserId = Guid.Parse("00000000-0000-0000-0000-000000000000"); // Reemplazar con el ID real
+
+        // Cargar saldo del usuario
+        await LoadUserBalanceAsync();
+    }
+
+    private async Task LoadUserBalanceAsync()
+    {
+        try
+        {
+            var user = await UserService.GetUserByIdAsync(_currentUserId);
+            if (user != null)
+            {
+                _userBalance = user.Balance;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error loading user balance: {ex.Message}");
+        }
+    }
+
+    private async Task SearchNumbers()
+    {
+        try
+        {
+            _isSearching = true;
+            _rentError = null;
+            _searchResults.Clear();
+
+            var results = await PlivoService.SearchAvailableNumbersAsync(
+                _searchModel.CountryCode,
+                string.IsNullOrEmpty(_searchModel.Type) ? null : _searchModel.Type,
+                string.IsNullOrEmpty(_searchModel.Pattern) ? null : _searchModel.Pattern
+            );
+
+            _searchResults = results.ToList();
+            _hasSearched = true;
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isSearching = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowRentModal(PhoneNumberResource number)
+    {
+        _selectedNumber = number;
+        _redirectionNumber = "";
+        _rentError = null;
+        _showRentModal = true;
+    }
+
+    private void CloseRentModal()
+    {
+        _showRentModal = false;
+    }
+
+    private async Task RentPhoneNumber()
+    {
+        if (string.IsNullOrWhiteSpace(_redirectionNumber))
+        {
+            _rentError = await LocalizedText("PhoneNumber.RedirectionRequired");
+            return;
+        }
+
+        try
+        {
+            _isRenting = true;
+            _rentError = null;
+
+            // Verificar saldo
+            if (_userBalance < decimal.Parse(_selectedNumber.MonthlyRentalRate))
+            {
+                _rentError = await LocalizedText("PhoneNumber.InsufficientBalance");
+                return;
+            }
+
+            // Alquilar número
+            var plivoId = await PlivoService.RentPhoneNumberAsync(_selectedNumber.Number);
+
+            // Configurar webhook
+            var webhookUrl = $"{NavigationManager.BaseUri.TrimEnd('/')}/api/webhook/plivo/sms";
+            await PlivoService.SetupRedirectionWebhookAsync(plivoId, webhookUrl);
+
+            // Registrar en la base de datos
+            await PhoneNumberService.AddPhoneNumberAsync(
+                _currentUserId,
+                _selectedNumber.Number,
+                plivoId,
+                _redirectionNumber,
+                decimal.Parse(_selectedNumber.MonthlyRentalRate),
+                GetPhoneNumberTypeFromString(_selectedNumber.Type)
+            );
+
+            // Mostrar mensaje de éxito y redirigir
+            await JSRuntime.InvokeVoidAsync("alert", await LocalizedText("PhoneNumber.RentSuccess"));
+            NavigationManager.NavigateTo("/phonenumbers");
+        }
+        catch (Exception ex)
+        {
+            _rentError = ex.Message;
+        }
+        finally
+        {
+            _isRenting = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetPhoneType(string type)
+    {
+        if (string.IsNullOrEmpty(type))
+        {
+            return LocalizedText("PhoneNumber.Type.Local").Result;
+        }
+
+        return type.ToLower() switch
+        {
+            "tollfree" => LocalizedText("PhoneNumber.Type.TollFree").Result,
+            "mobile" => LocalizedText("PhoneNumber.Type.Mobile").Result,
+            _ => LocalizedText("PhoneNumber.Type.Local").Result
+        };
+    }
+
+    private PhoneNumberType GetPhoneNumberTypeFromString(string type)
+    {
+        if (string.IsNullOrEmpty(type))
+        {
+            return PhoneNumberType.Standard;
+        }
+
+        return type.ToLower() switch
+        {
+            "tollfree" => PhoneNumberType.Toll_Free,
+            _ => PhoneNumberType.Standard
+        };
+    }
+
+    private async Task<string> LocalizedText(string key)
+    {
+        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+    }
+}

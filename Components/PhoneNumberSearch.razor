@@ -4,11 +4,12 @@
 @using NumeroEmpresarial.Core.Services
 @using NumeroEmpresarial.Domain.Entities
 @using NumeroEmpresarial.Domain.Enums
-@using Plivo.Resource.PhoneNumber
+@using NumeroEmpresarial.Domain.Models
 @inject IPlivoService PlivoService
 @inject IPhoneNumberService PhoneNumberService
 @inject IUserService UserService
 @inject ILocalizationService LocalizationService
+@inject IAuthenticationService AuthenticationService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 @attribute [Authorize]
@@ -128,7 +129,7 @@
                                             @GetPhoneType(number.Type)
                                         </td>
                                         <td class="text-end">
-                                            $@(decimal.Parse(number.MonthlyRentalRate).ToString("F2"))/mes
+                                            $@(decimal.TryParse(number.MonthlyRentalRate, out var rate) ? rate.ToString("F2") : "0.00")/mes
                                         </td>
                                         <td class="text-end">
                                             <button class="btn btn-sm btn-primary" @onclick="() => ShowRentModal(number)">
@@ -168,7 +169,7 @@
                     <p>@LocalizedText("PhoneNumber.RentConfirm")</p>
                     <div class="alert alert-info">
                         <strong>@_selectedNumber?.Number</strong><br />
-                        @LocalizedText("PhoneNumber.MonthlyCost"): <strong>$@(decimal.Parse(_selectedNumber?.MonthlyRentalRate ?? "0").ToString("F2"))</strong>
+                        @LocalizedText("PhoneNumber.MonthlyCost"): <strong>$@(decimal.TryParse(_selectedNumber?.MonthlyRentalRate ?? "0", out var cost) ? cost.ToString("F2") : "0.00")</strong>
                     </div>
 
                     <div class="mb-3">
@@ -234,11 +235,18 @@
         // Obtener idioma actual
         _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
 
-        // TODO: Obtener el ID del usuario actual (desde el servicio de autenticación)
-        _currentUserId = Guid.Parse("00000000-0000-0000-0000-000000000000"); // Reemplazar con el ID real
+        try
+        {
+            // Obtener el ID del usuario actual usando el servicio de autenticación
+            _currentUserId = await AuthenticationService.GetCurrentUserIdAsync();
 
-        // Cargar saldo del usuario
-        await LoadUserBalanceAsync();
+            // Cargar saldo del usuario
+            await LoadUserBalanceAsync();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            NavigationManager.NavigateTo("/Account/Login", true);
+        }
     }
 
     private async Task LoadUserBalanceAsync()

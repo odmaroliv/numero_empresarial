@@ -1,0 +1,415 @@
+﻿<h3>MessageViewer</h3>
+
+@code {
+
+}
+@page "/messagewindows/{WindowId:guid}/messages"
+@using Microsoft.AspNetCore.Authorization
+@using NumeroEmpresarial.Core.Interfaces
+@using NumeroEmpresarial.Domain.Entities
+@using NumeroEmpresarial.Domain.DTOs
+@inject IMessageWindowService MessageWindowService
+@inject ILocalizationService LocalizationService
+@inject IAuthenticationService AuthenticationService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@attribute [Authorize]
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>@LocalizedText("MessageViewer.Title")</h1>
+    <div>
+        <button class="btn btn-outline-primary me-2" @onclick="RefreshMessages">
+            <i class="fas fa-sync-alt me-2"></i>@LocalizedText("Common.Refresh")
+        </button>
+        <button class="btn btn-outline-secondary" @onclick="GoBack">
+            <i class="fas fa-arrow-left me-2"></i>@LocalizedText("Common.Back")
+        </button>
+    </div>
+</div>
+
+@if (_isLoading)
+{
+    <div class="d-flex justify-content-center my-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">@LocalizedText("Common.Loading")</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">@LocalizedText("MessageWindow.Details")</h5>
+                </div>
+                <div class="card-body">
+                    @if (_window != null)
+                    {
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="fw-bold">@LocalizedText("PhoneNumber.Number"):</span>
+                            <span>@_window.PhoneNumber?.Number</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="fw-bold">@LocalizedText("MessageWindow.Created"):</span>
+                            <span>@_window.StartTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="fw-bold">@LocalizedText("MessageWindow.TimeWindow"):</span>
+                            <span>@_window.StartTime.ToLocalTime().ToString("HH:mm") - @_window.EndTime.ToLocalTime().ToString("HH:mm")</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="fw-bold">@LocalizedText("MessageWindow.Messages"):</span>
+                            <span>@_window.ReceivedMessages / @_window.MaxMessages</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="fw-bold">@LocalizedText("Common.Status"):</span>
+                            @if (IsWindowActive(_window))
+                            {
+                                <span class="badge bg-success">@LocalizedText("Common.Active")</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">@LocalizedText("Common.Inactive")</span>
+                            }
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="fw-bold">@LocalizedText("Common.Cost"):</span>
+                            <span>$@_window.WindowCost.ToString("F2")</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            @LocalizedText("MessageWindow.NotFound")
+                        </div>
+                    }
+                </div>
+                <div class="card-footer">
+                    @if (_window != null && IsWindowActive(_window))
+                    {
+                        <button class="btn btn-warning w-100" @onclick="ShowCloseWindowModal">
+                            <i class="fas fa-times-circle me-2"></i>@LocalizedText("MessageWindow.Close")
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-secondary w-100" disabled>
+                            <i class="fas fa-times-circle me-2"></i>@LocalizedText("MessageWindow.Closed")
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">@LocalizedText("MessageViewer.Messages")</h5>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="exportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-download me-1"></i> @LocalizedText("Common.Export")
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="exportDropdown">
+                            <li><button class="dropdown-item" @onclick="ExportToCsv"><i class="fas fa-file-csv me-2"></i>CSV</button></li>
+                            <li><button class="dropdown-item" @onclick="ExportToJson"><i class="fas fa-file-code me-2"></i>JSON</button></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="message-container p-3" style="max-height: 400px; overflow-y: auto;">
+                        @if (_messages.Any())
+                        {
+                            @foreach (var message in _messages.OrderBy(m => m.ReceivedTime))
+                            {
+                                <div class="d-flex flex-column mb-3">
+                                    <div class="message-bubble message-received">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <small class="text-muted">@message.From</small>
+                                            <small class="text-muted">@message.ReceivedTime.ToLocalTime().ToString("HH:mm")</small>
+                                        </div>
+                                        <div>@message.Text</div>
+                                    </div>
+                                    @if (message.Redirected)
+                                    {
+                                        <small class="text-success ms-2">
+                                            <i class="fas fa-check-circle me-1"></i>@LocalizedText("MessageViewer.Redirected")
+                                        </small>
+                                    }
+                                    else
+                                    {
+                                        <small class="text-warning ms-2">
+                                            <i class="fas fa-exclamation-circle me-1"></i>@LocalizedText("MessageViewer.NotRedirected")
+                                        </small>
+                                    }
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="text-center p-5">
+                                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                                <p>@LocalizedText("MessageViewer.NoMessages")</p>
+                                @if (IsWindowActive(_window))
+                                {
+                                    <p class="text-muted">@LocalizedText("MessageViewer.WaitingForMessages")</p>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="card-footer bg-light">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>@LocalizedText("MessageViewer.RefreshInfo")
+                        </small>
+                        <small class="text-muted">
+                            @if (IsWindowActive(_window))
+                            {
+                                <span class="text-success">
+                                    <i class="fas fa-circle me-1"></i>@LocalizedText("MessageViewer.WindowActive")
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="text-secondary">
+                                    <i class="fas fa-circle me-1"></i>@LocalizedText("MessageViewer.WindowInactive")
+                                </span>
+                            }
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showCloseModal)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@LocalizedText("MessageWindow.CloseConfirm")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModalWindow"></button>
+                </div>
+                <div class="modal-body">
+                    <p>@LocalizedText("MessageWindow.CloseWarning")</p>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        @LocalizedText("MessageWindow.CloseWarningDetails")
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModalWindow">@LocalizedText("Common.Cancel")</button>
+                    <button type="button" class="btn btn-danger" @onclick="CloseMessageWindow" disabled="@_isClosing">
+                        @if (_isClosing)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            <span class="ms-2">@LocalizedText("Common.Processing")</span>
+                        }
+                        else
+                        {
+                            <i class="fas fa-times-circle me-2"></i>
+                            <span>@LocalizedText("MessageWindow.Close")</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    [Parameter]
+    public string WindowId { get; set; }
+
+    private string _currentLanguage = "es";
+    private bool _isLoading = true;
+    private Guid _currentUserId;
+    private MessageWindow _window;
+    private List<Message> _messages = new();
+
+    // Modal para cerrar ventana
+    private bool _showCloseModal = false;
+    private bool _isClosing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Obtener idioma actual
+            _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+
+            // Obtener el ID del usuario actual
+            _currentUserId = await AuthenticationService.GetCurrentUserIdAsync();
+
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            NavigationManager.NavigateTo("/", true);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _isLoading = true;
+
+            // Cargar la ventana de mensajes
+            var windowIdGuid = Guid.Parse(WindowId);
+            _window = await MessageWindowService.GetWindowByIdAsync(windowIdGuid);
+
+            if (_window == null || _window.PhoneNumber.UserId != _currentUserId)
+            {
+                NavigationManager.NavigateTo("/");
+                return;
+            }
+
+            // Cargar mensajes
+            _messages = await MessageWindowService.GetWindowMessagesAsync(windowIdGuid);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private bool IsWindowActive(MessageWindow window)
+    {
+        return window.Active && window.EndTime > DateTime.UtcNow && window.ReceivedMessages < window.MaxMessages;
+    }
+
+    private async Task RefreshMessages()
+    {
+        await LoadDataAsync();
+    }
+
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo($"/phonenumbers/{_window.PhoneNumberId}/windows");
+    }
+
+    private void ShowCloseWindowModal()
+    {
+        _showCloseModal = true;
+    }
+
+    private void CloseModalWindow()
+    {
+        _showCloseModal = false;
+    }
+
+    private async Task CloseMessageWindow()
+    {
+        try
+        {
+            _isClosing = true;
+
+            // Cerrar ventana de mensajes
+            await MessageWindowService.CloseWindowAsync(Guid.Parse(WindowId));
+
+            // Recargar datos
+            await LoadDataAsync();
+
+            // Cerrar modal
+            _showCloseModal = false;
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isClosing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportToCsv()
+    {
+        try
+        {
+            // Preparar contenido CSV
+            var csvContent = "Sender,Message,Time,Redirected\n";
+
+            foreach (var message in _messages.OrderBy(m => m.ReceivedTime))
+            {
+                // Escapar comillas en el texto del mensaje
+                var escapedText = message.Text.Replace("\"", "\"\"");
+
+                csvContent += $"{message.From},\"{escapedText}\",{message.ReceivedTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")},{message.Redirected}\n";
+            }
+
+            // Codificar a Base64 para pasarlo a JavaScript
+            var base64Content = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(csvContent));
+
+            // Timestamp para nombre de archivo único
+            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var fileName = $"messages_{timestamp}.csv";
+
+            // Llamar a función JS para descargar archivo
+            await JSRuntime.InvokeVoidAsync("downloadFile", base64Content, "text/csv", fileName);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error exporting to CSV: {ex.Message}");
+        }
+    }
+
+    private async Task ExportToJson()
+    {
+        try
+        {
+            // Preparar datos JSON
+            var jsonData = _messages.OrderBy(m => m.ReceivedTime).Select(m => new
+            {
+                sender = m.From,
+                message = m.Text,
+                time = m.ReceivedTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
+                redirected = m.Redirected
+            });
+
+            // Serializar a JSON
+            var jsonContent = System.Text.Json.JsonSerializer.Serialize(jsonData, new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+
+            // Codificar a Base64 para pasarlo a JavaScript
+            var base64Content = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(jsonContent));
+
+            // Timestamp para nombre de archivo único
+            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var fileName = $"messages_{timestamp}.json";
+
+            // Llamar a función JS para descargar archivo
+            await JSRuntime.InvokeVoidAsync("downloadFile", base64Content, "application/json", fileName);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error exporting to JSON: {ex.Message}");
+        }
+    }
+
+    private async Task<string> LocalizedText(string key)
+    {
+        try
+        {
+            return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+        }
+        catch
+        {
+            return key; // Fallback si hay error
+        }
+    }
+}

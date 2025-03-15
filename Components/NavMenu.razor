@@ -64,14 +64,33 @@
 
 @code {
     private bool collapseNavMenu = true;
-    private string _currentLanguage = "es";
+    private string _currentLanguage = "es"; // Valor predeterminado inicial
+    private bool _isFirstRender = true;
 
     private string NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
-    protected override async Task OnInitializedAsync()
+    // No usamos OnInitializedAsync, en su lugar moveremos la lógica a OnAfterRenderAsync
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Obtener idioma del navegador o de las cookies
-        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+        if (firstRender)
+        {
+            try
+            {
+                // Obtener idioma del navegador o de localStorage
+                var storedLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage");
+                if (!string.IsNullOrEmpty(storedLanguage))
+                {
+                    _currentLanguage = storedLanguage;
+                    _isFirstRender = false;
+                    StateHasChanged(); // Forzar actualización de la UI con el idioma correcto
+                }
+            }
+            catch
+            {
+                // Si hay un error, usamos el idioma por defecto "es"
+            }
+        }
     }
 
     private void ToggleNavMenu()
@@ -79,8 +98,16 @@
         collapseNavMenu = !collapseNavMenu;
     }
 
-    private async Task<string> LocalizedText(string key)
+    private string LocalizedText(string key)
     {
-        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+        try
+        {
+            // Versión sincrónica para evitar problemas con JS durante prerenderizado
+            return LocalizationService.GetLocalizedTextAsync(key, _currentLanguage).Result;
+        }
+        catch
+        {
+            return key;
+        }
     }
 }

@@ -1,0 +1,243 @@
+﻿@page "/Account/Register"
+@using NumeroEmpresarial.Core.Interfaces
+@using NumeroEmpresarial.Domain.DTOs
+@using NumeroEmpresarial.Domain.Entities
+@inject IUserService UserService
+@inject IAuthenticationService AuthService
+@inject ILocalizationService LocalizationService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Registro - Números Empresariales</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-6 col-md-8">
+            <div class="card bg-white shadow-lg border-0">
+                <div class="card-header bg-transparent pb-3 text-center">
+                    <img src="images/logo.png" alt="Logo" class="img-fluid mb-3" style="max-height: 60px;">
+                    <h3 class="text-center">@LocalizedText("Auth.CreateAccount")</h3>
+                </div>
+                <div class="card-body px-lg-5 py-lg-4">
+                    <EditForm Model="@_registerModel" OnValidSubmit="HandleRegister">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-circle me-2"></i>
+                                @_errorMessage
+                            </div>
+                        }
+
+                        <div class="mb-3">
+                            <label for="name" class="form-label">@LocalizedText("Common.FullName")</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <InputText id="name" class="form-control" @bind-Value="_registerModel.Name" placeholder="Nombre y Apellido" />
+                            </div>
+                            <ValidationMessage For="@(() => _registerModel.Name)" class="text-danger" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="email" class="form-label">@LocalizedText("Common.Email")</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+                                <InputText id="email" class="form-control" @bind-Value="_registerModel.Email" placeholder="nombre@ejemplo.com" />
+                            </div>
+                            <ValidationMessage For="@(() => _registerModel.Email)" class="text-danger" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="phone" class="form-label">@LocalizedText("Common.Phone")</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                <InputText id="phone" class="form-control" @bind-Value="_registerModel.Phone" placeholder="+1234567890" />
+                            </div>
+                            <ValidationMessage For="@(() => _registerModel.Phone)" class="text-danger" />
+                            <small class="form-text text-muted">@LocalizedText("Auth.PhoneHelp")</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="password" class="form-label">@LocalizedText("Common.Password")</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                <InputText id="password" type="password" class="form-control" @bind-Value="_registerModel.Password" placeholder="Contraseña (mínimo 6 caracteres)" />
+                            </div>
+                            <ValidationMessage For="@(() => _registerModel.Password)" class="text-danger" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="confirmPassword" class="form-label">@LocalizedText("Auth.ConfirmPassword")</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                <InputText id="confirmPassword" type="password" class="form-control" @bind-Value="_confirmPassword" placeholder="Confirmar contraseña" />
+                            </div>
+                            @if (!string.IsNullOrEmpty(_passwordMismatchError))
+                            {
+                                <div class="text-danger mt-1">@_passwordMismatchError</div>
+                            }
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="language" class="form-label">@LocalizedText("Common.PreferredLanguage")</label>
+                            <select id="language" class="form-select" @bind="_registerModel.Language">
+                                <option value="es">Español</option>
+                                <option value="en">English</option>
+                            </select>
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <InputCheckbox id="termsCheck" class="form-check-input" @bind-Value="_acceptTerms" />
+                            <label class="form-check-label" for="termsCheck">
+                                @LocalizedText("Auth.AcceptTerms") <a href="/terms" target="_blank">@LocalizedText("Common.TermsAndConditions")</a> @LocalizedText("Common.And") <a href="/privacy" target="_blank">@LocalizedText("Common.PrivacyPolicy")</a>
+                            </label>
+                            @if (!_acceptTerms && _showTermsError)
+                            {
+                                <div class="text-danger mt-1">@LocalizedText("Auth.MustAcceptTerms")</div>
+                            }
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary" disabled="@_isProcessing">
+                                @if (_isProcessing)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    <span class="ms-2">@LocalizedText("Common.Processing")</span>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-user-plus me-1"></i> @LocalizedText("Auth.CreateAccount")
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+                <div class="card-footer text-center pb-4">
+                    <p class="mb-0">@LocalizedText("Auth.AlreadyHaveAccount") <a href="/Account/Login" class="text-primary">@LocalizedText("Auth.SignInHere")</a></p>
+                </div>
+            </div>
+            <div class="text-center mt-3 text-muted">
+                <small>&copy; @DateTime.Now.Year - Números Empresariales</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private UserCreateUpdateDto _registerModel = new() { Language = "es" };
+    private string _confirmPassword = string.Empty;
+    private bool _acceptTerms = false;
+    private bool _isProcessing = false;
+    private bool _showTermsError = false;
+    private string _errorMessage = string.Empty;
+    private string _passwordMismatchError = string.Empty;
+    private string _currentLanguage = "es";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Verificar si el usuario ya está autenticado
+        try
+        {
+            var user = await AuthService.GetCurrentUserAsync();
+            if (user != null)
+            {
+                NavigationManager.NavigateTo("/");
+            }
+        }
+        catch
+        {
+            // El usuario no está autenticado, continuar con el registro
+        }
+
+        // Obtener idioma actual
+        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+    }
+
+    private async Task HandleRegister()
+    {
+        // Validaciones adicionales
+        if (_registerModel.Password != _confirmPassword)
+        {
+            _passwordMismatchError = await LocalizedText("Auth.PasswordsMismatch");
+            return;
+        }
+        else
+        {
+            _passwordMismatchError = string.Empty;
+        }
+
+        if (!_acceptTerms)
+        {
+            _showTermsError = true;
+            return;
+        }
+        else
+        {
+            _showTermsError = false;
+        }
+
+        try
+        {
+            _isProcessing = true;
+            _errorMessage = string.Empty;
+
+            // Verificar si el email ya está registrado
+            var existingUser = await UserService.GetUserByEmailAsync(_registerModel.Email);
+            if (existingUser != null)
+            {
+                _errorMessage = await LocalizedText("Auth.EmailAlreadyRegistered");
+                return;
+            }
+
+            // Crear nuevo usuario
+            var user = new User
+                {
+                    Id = Guid.NewGuid(),
+                    Name = _registerModel.Name,
+                    Email = _registerModel.Email,
+                    Phone = _registerModel.Phone,
+                    PasswordHash = UserService.HashPassword(_registerModel.Password),
+                    RegistrationDate = DateTime.UtcNow,
+                    LastLogin = DateTime.UtcNow,
+                    ApiKey = Guid.NewGuid().ToString("N"),
+                    Active = true,
+                    Balance = 10.00m, // Saldo inicial como bono de bienvenida
+                    Language = _registerModel.Language ?? "es"
+                };
+
+            await UserService.CreateUserAsync(user);
+
+            // Iniciar sesión automáticamente
+            await AuthService.SignInAsync(user, true);
+
+            // Guardar preferencia de idioma
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "preferredLanguage", user.Language);
+
+            // Redirigir al dashboard
+            NavigationManager.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"{await LocalizedText("Common.Error")}: {ex.Message}";
+        }
+        finally
+        {
+            _isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<string> LocalizedText(string key)
+    {
+        try
+        {
+            return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+        }
+        catch
+        {
+            return key;
+        }
+    }
+}

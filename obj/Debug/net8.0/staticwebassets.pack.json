@@ -1,0 +1,49 @@
+{
+  "Files": [
+    {
+      "Id": "C:\\Users\\siste\\source\\repos\\NumeroEmpresarial\\obj\\Debug\\net8.0\\scopedcss\\projectbundle\\NumeroEmpresarial.bundle.scp.css",
+      "PackagePath": "staticwebassets\\NumeroEmpresarial.bundle.scp.css"
+    },
+    {
+      "Id": "C:\\Users\\siste\\source\\repos\\NumeroEmpresarial\\wwwroot\\app.css",
+      "PackagePath": "staticwebassets\\app.css"
+    },
+    {
+      "Id": "C:\\Users\\siste\\source\\repos\\NumeroEmpresarial\\wwwroot\\css\\auth.css",
+      "PackagePath": "staticwebassets\\css\\auth.css"
+    },
+    {
+      "Id": "C:\\Users\\siste\\source\\repos\\NumeroEmpresarial\\wwwroot\\css\\site.css",
+      "PackagePath": "staticwebassets\\css\\site.css"
+    },
+    {
+      "Id": "C:\\Users\\siste\\source\\repos\\NumeroEmpresarial\\wwwroot\\js\\download.js",
+      "PackagePath": "staticwebassets\\js\\download.js"
+    },
+    {
+      "Id": "C:\\Users\\siste\\source\\repos\\NumeroEmpresarial\\wwwroot\\js\\site.js",
+      "PackagePath": "staticwebassets\\js\\site.js"
+    },
+    {
+      "Id": "C:\\Users\\siste\\source\\repos\\NumeroEmpresarial\\wwwroot\\js\\stripe-checkout.js",
+      "PackagePath": "staticwebassets\\js\\stripe-checkout.js"
+    },
+    {
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.NumeroEmpresarial.Microsoft.AspNetCore.StaticWebAssets.props",
+      "PackagePath": "build\\Microsoft.AspNetCore.StaticWebAssets.props"
+    },
+    {
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.build.NumeroEmpresarial.props",
+      "PackagePath": "build\\NumeroEmpresarial.props"
+    },
+    {
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.buildMultiTargeting.NumeroEmpresarial.props",
+      "PackagePath": "buildMultiTargeting\\NumeroEmpresarial.props"
+    },
+    {
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.buildTransitive.NumeroEmpresarial.props",
+      "PackagePath": "buildTransitive\\NumeroEmpresarial.props"
+    }
+  ],
+  "ElementsToRemove": []
+}

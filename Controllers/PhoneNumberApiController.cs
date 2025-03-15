@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NumeroEmpresarial.Core.Interfaces;
+using NumeroEmpresarial.Domain.Enums;
 
 namespace NumeroEmpresarial.Controllers
 {
@@ -127,8 +128,8 @@ namespace NumeroEmpresarial.Controllers
                 {
                     number = n.Number,
                     type = n.Type,
-                    monthlyCost = decimal.Parse(n.MonthlyRentalRate),
-                    setupFee = decimal.Parse(n.SetupRate)
+                    monthlyCost = decimal.TryParse(n.MonthlyRentalRate, out var cost) ? cost : 1.99m,
+                    setupFee = decimal.TryParse(n.SetupRate, out var fee) ? fee : 0.00m
                 });
 
                 return Ok(new { availableNumbers = result });
@@ -180,7 +181,7 @@ namespace NumeroEmpresarial.Controllers
                     plivoId,
                     model.RedirectionNumber,
                     numberCost,
-                    Domain.Enums.PhoneNumberType.Standard);
+                    model.PhoneNumberType); // Usar PhoneNumberType del modelo
 
                 var result = new
                 {
@@ -339,6 +340,7 @@ namespace NumeroEmpresarial.Controllers
     {
         public string PhoneNumber { get; set; }
         public string RedirectionNumber { get; set; }
+        public PhoneNumberType PhoneNumberType { get; set; } = PhoneNumberType.Standard;
     }
 
     public class UpdateRedirectionDto

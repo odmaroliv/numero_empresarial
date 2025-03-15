@@ -3,11 +3,74 @@ using Microsoft.EntityFrameworkCore;
 using NumeroEmpresarial.Data;
 using System.IO.Compression;
 
-
 namespace NumeroEmpresarial.Common.Config
 {
     public static class PerformanceConfig
     {
+        // Método nuevo que no incluye la configuración del DbContextPool
+        public static IServiceCollection AddPerformanceOptimizationsWithoutDbContextPool(this IServiceCollection services, IConfiguration configuration)
+        {
+            // Configuración de compresión de respuesta
+            services.AddResponseCompression(options =>
+            {
+                options.EnableForHttps = true;
+                options.Providers.Add<BrotliCompressionProvider>();
+                options.Providers.Add<GzipCompressionProvider>();
+                options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+                    new[] {
+                        "text/plain",
+                        "text/css",
+                        "application/javascript",
+                        "text/html",
+                        "application/xml",
+                        "text/xml",
+                        "application/json",
+                        "text/json"
+                    });
+            });
+
+            services.Configure<BrotliCompressionProviderOptions>(options =>
+            {
+                options.Level = CompressionLevel.Fastest;
+            });
+
+            services.Configure<GzipCompressionProviderOptions>(options =>
+            {
+                options.Level = CompressionLevel.Fastest;
+            });
+
+            // Configuración de caché distribuida
+            //var useRedisCache = configuration.GetValue<bool>("Cache:UseRedis");
+
+            //if (useRedisCache)
+            //{
+            //    services.AddStackExchangeRedisCache(options =>
+            //    {
+            //        options.Configuration = configuration.GetConnectionString("Redis");
+            //        options.InstanceName = "NumeroEmpresarial:";
+            //    });
+            //}
+            //else
+            //{
+            //    services.AddDistributedMemoryCache();
+            //}
+
+            // Configuración de caché de respuesta HTTP
+            services.AddResponseCaching();
+
+            // Configuración de Rate Limiting
+            services.AddMemoryCache();
+
+            services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+            {
+                // Aumentar los límites para subidas de archivos (si es necesario)
+                options.MultipartBodyLengthLimit = 10 * 1024 * 1024; // 10 MB
+            });
+
+            return services;
+        }
+
+        // Método original (mantenido por compatibilidad, pero no lo usamos)
         public static IServiceCollection AddPerformanceOptimizations(this IServiceCollection services, IConfiguration configuration)
         {
             // Configuración de compresión de respuesta

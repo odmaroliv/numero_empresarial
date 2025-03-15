@@ -342,10 +342,10 @@ namespace NumeroEmpresarial.Core.Services
                     _webhookSecret
                 );
 
-                // Manejar diferentes tipos de eventos
+                // Manejar diferentes tipos de eventos usando nombres de eventos como cadenas
                 switch (stripeEvent.Type)
                 {
-                    case Events.CheckoutSessionCompleted:
+                    case "checkout.session.completed":
                         var session = stripeEvent.Data.Object as Session;
                         if (session.Mode == "payment")
                         {
@@ -357,19 +357,19 @@ namespace NumeroEmpresarial.Core.Services
                         }
                         break;
 
-                    case Events.InvoicePaymentSucceeded:
+                    case "invoice.payment_succeeded":
                         var invoice = stripeEvent.Data.Object as Invoice;
                         // Actualizar estado de suscripción
                         await UpdateSubscriptionPaymentStatusAsync(invoice.SubscriptionId, "active");
                         break;
 
-                    case Events.InvoicePaymentFailed:
+                    case "invoice.payment_failed":
                         var failedInvoice = stripeEvent.Data.Object as Invoice;
                         // Actualizar estado de suscripción
                         await UpdateSubscriptionPaymentStatusAsync(failedInvoice.SubscriptionId, "failed");
                         break;
 
-                    case Events.CustomerSubscriptionDeleted:
+                    case "customer.subscription.deleted":
                         var deletedSubscription = stripeEvent.Data.Object as Stripe.Subscription;
                         // Cancelar suscripción en la base de datos
                         await UpdateSubscriptionStatusAsync(deletedSubscription.Id, false);

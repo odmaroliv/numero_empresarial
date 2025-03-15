@@ -15,14 +15,16 @@ namespace NumeroEmpresarial.Controllers
         private readonly IPlivoService _plivoService;
         private readonly IPhoneNumberService _phoneNumberService;
         private readonly IStripeService _stripeService;
+        private readonly IUserService _userService;
 
         public WebhookController(
             ILogger<WebhookController> logger,
-        ApplicationDbContext context,
+            ApplicationDbContext context,
             IMessageWindowService messageWindowService,
-        IPlivoService plivoService,
+            IPlivoService plivoService,
             IPhoneNumberService phoneNumberService,
-            IStripeService stripeService)
+            IStripeService stripeService,
+            IUserService userService)
         {
             _logger = logger;
             _context = context;
@@ -30,6 +32,7 @@ namespace NumeroEmpresarial.Controllers
             _plivoService = plivoService;
             _phoneNumberService = phoneNumberService;
             _stripeService = stripeService;
+            _userService = userService;
         }
 
         [HttpPost("plivo/sms")]
@@ -37,6 +40,8 @@ namespace NumeroEmpresarial.Controllers
         {
             try
             {
+                _logger.LogInformation("SMS webhook received from Plivo");
+
                 // Leer datos del webhook de Plivo
                 string from = Request.Form["From"];
                 string to = Request.Form["To"];
@@ -67,10 +72,17 @@ namespace NumeroEmpresarial.Controllers
                         .Include(s => s.Plan)
                         .FirstOrDefaultAsync(s => s.UserId == user.Id && s.Active);
 
-                    if (subscription != null)
+                    if (subscription != null && subscription.Plan != null)
                     {
                         messageCost = subscription.Plan.MessageCost;
                     }
+                }
+
+                // Verificar saldo del usuario
+                if (user != null && user.Balance < messageCost)
+                {
+                    _logger.LogWarning($"Saldo insuficiente para usuario {user.Id}, número {to}");
+                    return Ok(new { status = "error", message = "Insufficient balance" });
                 }
 
                 // Registrar el mensaje en la ventana activa
@@ -131,6 +143,52 @@ namespace NumeroEmpresarial.Controllers
                 _logger.LogError($"Error en webhook Stripe: {ex.Message}");
                 return StatusCode(500, new { error = ex.Message });
             }
+        }
+
+        [HttpPost("plivo/call")]
+        public IActionResult PlivoCallWebhook()
+        {
+            try
+            {
+                _logger.LogInformation("Call webhook received from Plivo");
+
+                // Leer datos del webhook de Plivo para llamadas
+                string from = Request.Form["From"];
+                string to = Request.Form["To"];
+                string callUuid = Request.Form["CallUUID"];
+
+                _logger.LogInformation($"Llamada recibida - De: {from}, Para: {to}");
+
+                // Obtener el número de redirección
+                var phoneNumber = _phoneNumberService.GetPhoneNumberByNumberAsync(to).Result;
+
+                if (phoneNumber == null || string.IsNullOrEmpty(phoneNumber.RedirectionNumber))
+                {
+                    _logger.LogWarning($"No hay redirección configurada para el número {to}");
+                    return Content("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Speak>Lo sentimos, este número no está configurado para recibir llamadas.</Speak></Response>", "application/xml");
+                }
+
+                // Generar XML de redirección de llamada
+                string redirectXml = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<Response>
+    <Dial callerId=""{to}"">{phoneNumber.RedirectionNumber}</Dial>
+</Response>";
+
+                return Content(redirectXml, "application/xml");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error en webhook de llamada: {ex.Message}");
+
+                // Devolver un mensaje de error al llamante
+                return Content("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Speak>Lo sentimos, ha ocurrido un error al procesar la llamada.</Speak></Response>", "application/xml");
+            }
+        }
+
+        [HttpGet("test")]
+        public IActionResult Test()
+        {
+            return Ok(new { status = "success", message = "Webhook endpoints are working" });
         }
     }
 }

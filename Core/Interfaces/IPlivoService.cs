@@ -1,4 +1,6 @@
-﻿namespace NumeroEmpresarial.Core.Interfaces
+﻿using NumeroEmpresarial.Domain.Models;
+
+namespace NumeroEmpresarial.Core.Interfaces
 {
     public interface IPlivoService
     {

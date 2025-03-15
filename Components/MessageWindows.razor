@@ -6,6 +6,7 @@
 @inject IPhoneNumberService PhoneNumberService
 @inject IMessageWindowService MessageWindowService
 @inject IUserService UserService
+@inject IAuthenticationService AuthenticationService
 @inject ILocalizationService LocalizationService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
@@ -175,7 +176,7 @@ else
                         }
 
                         <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary" disabled="@_isCreating">
+                            <button type="submit" class="btn btn-primary" disabled="@(_isCreating || _userBalance < _createModel.Cost)">
                                 @if (_isCreating)
                                 {
                                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -249,7 +250,7 @@ else
     private PhoneNumber _phoneNumber;
     private List<MessageWindowDto> _messageWindows = new();
     private decimal _userBalance = 0;
-    private Guid _currentUserId = Guid.Empty;
+    private Guid _currentUserId;
 
     // Create window modal
     private bool _showCreateModal = false;
@@ -264,13 +265,21 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // Obtener idioma actual
-        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+        try
+        {
+            // Obtener idioma actual
+            _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
 
-        // TODO: Obtener el ID del usuario actual (desde el servicio de autenticación)
-        _currentUserId = Guid.Parse("00000000-0000-0000-0000-000000000000"); // Reemplazar con el ID real
+            // Obtener el ID del usuario actual
+            _currentUserId = await AuthenticationService.GetCurrentUserIdAsync();
 
-        await LoadDataAsync();
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            NavigationManager.NavigateTo("/phonenumbers", true);
+        }
     }
 
     private async Task LoadDataAsync()
@@ -429,6 +438,13 @@ else
 
     private async Task<string> LocalizedText(string key)
     {
-        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+        try
+        {
+            return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+        }
+        catch
+        {
+            return key; // Fallback si hay error
+        }
     }
 }

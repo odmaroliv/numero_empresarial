@@ -1,4 +1,5 @@
-﻿@inherits LayoutComponentBase
+﻿@using NumeroEmpresarial.Core.Interfaces
+@inherits LayoutComponentBase
 @inject ILocalizationService LocalizationService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
@@ -28,7 +29,7 @@
                         <li><a class="dropdown-item @(_currentLanguage == "en" ? "active" : "")" href="#" @onclick="@(() => ChangeLanguage("en"))" @onclick:preventDefault>🇺🇸 English</a></li>
                     </ul>
                 </div>
-                
+
                 <a href="/Account/Profile" class="btn btn-outline-primary me-2">
                     <i class="fas fa-user-circle"></i> @_userName
                 </a>
@@ -45,26 +46,39 @@
 </div>
 
 @code {
-    private string _currentLanguage = "es";
+    private string _currentLanguage = "es"; // Valor predeterminado inicial
     private string _userName = "Usuario";
     private IJSObjectReference _module;
     private bool _isDisposed;
 
-    protected override async Task OnInitializedAsync()
-    {
-        // Obtener idioma del navegador o de las cookies
-        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
-        
-        // Obtener nombre de usuario actual (si está autenticado)
-        // Esto debería venir de tu servicio de autenticación
-        _userName = "Usuario"; // Personaliza esto
-    }
+    // IMPORTANTE: No usamos OnInitializedAsync aquí, solo inicializamos con valores por defecto
+    // y luego cargamos los valores reales desde JS en OnAfterRenderAsync
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/mainLayout.js");
+            try
+            {
+                // Cargar módulo JS
+                _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/mainLayout.js");
+
+                // Obtener idioma del navegador o de localStorage (sólo después del primer renderizado)
+                var storedLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage");
+                if (!string.IsNullOrEmpty(storedLanguage))
+                {
+                    _currentLanguage = storedLanguage;
+                    StateHasChanged(); // Forzar actualización de la UI con el idioma correcto
+                }
+
+                // Aquí podríamos obtener también el nombre de usuario actual si es necesario
+                // _userName = ...
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error in OnAfterRenderAsync: {ex.Message}");
+                // No mostrar errores al usuario, simplemente usar los valores predeterminados
+            }
         }
     }
 
@@ -73,20 +87,28 @@
         if (_currentLanguage != language)
         {
             _currentLanguage = language;
-            
+
             // Guardar preferencia de idioma
             await JSRuntime.InvokeVoidAsync("localStorage.setItem", "preferredLanguage", language);
-            
+
             // Refrescar la página para aplicar el cambio de idioma
             NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
         }
     }
 
-    private async Task<string> LocalizedText(string key)
+    private string LocalizedText(string key)
     {
-        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+        try
+        {
+            // Usamos una versión sincrónica aquí para evitar problemas de JS durante el prerenderizado
+            return LocalizationService.GetLocalizedTextAsync(key, _currentLanguage).Result;
+        }
+        catch
+        {
+            return key;
+        }
     }
-    
+
     async ValueTask IAsyncDisposable.DisposeAsync()
     {
         if (!_isDisposed)
@@ -95,7 +117,7 @@
             {
                 await _module.DisposeAsync();
             }
-            
+
             _isDisposed = true;
         }
     }

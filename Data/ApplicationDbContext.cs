@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using NumeroEmpresarial.Domain.Entities;
+using NumeroEmpresarial.Domain.Enums;
 
 namespace NumeroEmpresarial.Data
 {
@@ -64,7 +65,13 @@ namespace NumeroEmpresarial.Data
                 entity.Property(e => e.ExpirationDate).HasColumnName("fecha_expiracion");
                 entity.Property(e => e.Active).HasColumnName("activo").HasDefaultValue(true);
                 entity.Property(e => e.RedirectionNumber).HasColumnName("numero_redireccion").IsRequired().HasMaxLength(20);
-                entity.Property(e => e.Type).HasColumnName("tipo_numero").HasDefaultValue(0);
+
+                // Corregido: Usar el valor de enumeración directamente y especificar la conversión
+                entity.Property(e => e.Type)
+                      .HasColumnName("tipo_numero")
+                      .HasConversion<int>() // Convertir explícitamente a int
+                      .HasDefaultValue(PhoneNumberType.Standard); // Usar el valor de enum, no el número
+
                 entity.Property(e => e.MonthlyCost).HasColumnName("costo_por_mes").HasColumnType("decimal(10,2)");
 
                 entity.HasIndex(e => e.Number).IsUnique();

@@ -20,13 +20,12 @@
     <Folder Include="Common\Localization\" />
     <Folder Include="Common\Constants\" />
     <Folder Include="Components\Pages\Account\" />
+    <Folder Include="Components\Pages\NewFolder\" />
     <Folder Include="Components\Pages\Shared\" />
     <Folder Include="Components\Pages\Payment\" />
     <Folder Include="Components\Pages\PhoneNumber\" />
     <Folder Include="Data\Migrations\" />
     <Folder Include="Data\Repositories\" />
-    <Folder Include="Data\Models\" />
-    <Folder Include="wwwroot\css\" />
     <Folder Include="wwwroot\images\" />
   </ItemGroup>
 
@@ -36,6 +35,10 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.ApiExplorer" Version="2.3.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Core" Version="2.3.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.3">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL.Design" Version="1.1.0" />
     <PackageReference Include="Plivo" Version="5.49.5" />

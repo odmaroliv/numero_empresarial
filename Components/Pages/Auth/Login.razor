@@ -1,0 +1,167 @@
+﻿@page "/Account/Login"
+@using NumeroEmpresarial.Core.Interfaces
+@using NumeroEmpresarial.Domain.DTOs
+@inject NavigationManager NavigationManager
+@inject IAuthenticationService AuthService
+@inject IUserService UserService
+@inject IJSRuntime JSRuntime
+@inject ILocalizationService LocalizationService
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card shadow">
+                <div class="card-header text-center bg-primary text-white">
+                    <h3 class="mb-0">@LocalizedText("Auth.Login")</h3>
+                </div>
+                <div class="card-body p-4">
+                    <EditForm Model="@_loginModel" OnValidSubmit="LoginAsync">
+                        <DataAnnotationsValidator />
+
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                <i class="fas fa-exclamation-circle me-2"></i> @_errorMessage
+                                <button type="button" class="btn-close" @onclick="ClearError"></button>
+                            </div>
+                        }
+
+                        <div class="mb-3">
+                            <label class="form-label">@LocalizedText("Auth.Email")</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+                                <InputText @bind-Value="_loginModel.Email" class="form-control" placeholder="email@example.com" />
+                            </div>
+                            <ValidationMessage For="@(() => _loginModel.Email)" class="text-danger" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">@LocalizedText("Auth.Password")</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                <InputText @bind-Value="_loginModel.Password" type="password" class="form-control" placeholder="••••••••" />
+                            </div>
+                            <ValidationMessage For="@(() => _loginModel.Password)" class="text-danger" />
+                        </div>
+
+                        <div class="mb-3 form-check">
+                            <InputCheckbox @bind-Value="_loginModel.RememberMe" class="form-check-input" id="rememberMe" />
+                            <label class="form-check-label" for="rememberMe">@LocalizedText("Auth.RememberMe")</label>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary" disabled="@_isLoading">
+                                @if (_isLoading)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    <span class="ms-2">@LocalizedText("Common.Processing")</span>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-sign-in-alt me-2"></i>
+                                    <span>@LocalizedText("Auth.Login")</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+
+                    <hr class="my-4" />
+
+                    <div class="text-center">
+                        <p class="mb-2">@LocalizedText("Auth.NoAccount")</p>
+                        <a href="/Account/Register" class="btn btn-outline-primary">
+                            <i class="fas fa-user-plus me-2"></i>@LocalizedText("Auth.Register")
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery]
+    public string ReturnUrl { get; set; }
+
+    private LoginDto _loginModel = new();
+    private bool _isLoading = false;
+    private string _errorMessage = null;
+    private string _currentLanguage = "es";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener idioma actual
+        _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
+
+        // Verificar si el usuario ya está autenticado
+        try
+        {
+            var user = await AuthService.GetCurrentUserAsync();
+            if (user != null)
+            {
+                NavigateTo();
+            }
+        }
+        catch
+        {
+            // El usuario no está autenticado, continuar con la pantalla de login
+        }
+    }
+
+    private async Task LoginAsync()
+    {
+        try
+        {
+            _isLoading = true;
+            _errorMessage = null;
+
+            // Autenticar al usuario con email y password
+            var user = await UserService.AuthenticateAsync(_loginModel.Email, _loginModel.Password);
+
+            if (user != null)
+            {
+                // Iniciar sesión con el usuario real, no con el DTO
+                await AuthService.SignInAsync(user, _loginModel.RememberMe);
+
+                // Redireccionar
+                NavigateTo();
+            }
+            else
+            {
+                _errorMessage = await LocalizedText("Auth.InvalidCredentials");
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void NavigateTo()
+    {
+        if (!string.IsNullOrEmpty(ReturnUrl) && Uri.IsWellFormedUriString(ReturnUrl, UriKind.Relative))
+        {
+            NavigationManager.NavigateTo(ReturnUrl);
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/");
+        }
+    }
+
+    private void ClearError()
+    {
+        _errorMessage = null;
+    }
+
+    private async Task<string> LocalizedText(string key)
+    {
+        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+    }
+}

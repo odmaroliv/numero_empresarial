@@ -9,6 +9,7 @@
 @inject ILocalizationService LocalizationService
 @inject IAuthenticationService AuthenticationService
 @inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
 @attribute [Authorize]
 
 <h1>@LocalizedText("Dashboard.Title")</h1>
@@ -17,7 +18,7 @@
 {
     <div class="d-flex justify-content-center mt-5">
         <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Cargando...</span>
+            <span class="visually-hidden">@LocalizedText("Common.Loading")</span>
         </div>
     </div>
 }
@@ -208,7 +209,7 @@ else
                                         <p class="text-sm mt-3 mb-2">
                                             @LocalizedText("MessageWindow.Messages"): @window.ReceivedMessages / @window.MaxMessages
                                         </p>
-                                        <a href="/messagewindows/@window.Id" class="btn btn-outline-primary btn-sm">
+                                        <a href="/messagewindows/@window.Id/messages" class="btn btn-outline-primary btn-sm">
                                             @LocalizedText("MessageWindow.ViewMessages")
                                         </a>
                                     </div>
@@ -222,7 +223,7 @@ else
                             <p class="text-sm mb-3">@LocalizedText("MessageWindow.NoActive")</p>
                             @if (_activePhoneNumbers.Any())
                             {
-                                <a href="/phonenumbers/@_activePhoneNumbers.First().Id/windows/create" class="btn btn-sm btn-outline-primary">
+                                <a href="/phonenumbers/@_activePhoneNumbers.First().Id/windows" class="btn btn-sm btn-outline-primary">
                                     @LocalizedText("MessageWindow.CreateOne")
                                 </a>
                             }
@@ -313,24 +314,35 @@ else
     private List<Transaction> _recentTransactions = new();
     private int _totalMessages = 0;
     private Guid _currentUserId;
+    private User _currentUser;
 
     protected override async Task OnInitializedAsync()
     {
-        // Obtener idioma actual
         _currentLanguage = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "preferredLanguage") ?? "es";
 
-        // Obtener el ID del usuario actual desde el servicio de autenticación
         try
         {
+            _isLoading = true;
             _currentUserId = await AuthenticationService.GetCurrentUserIdAsync();
-            await LoadDashboardDataAsync();
+            _currentUser = await AuthenticationService.GetCurrentUserAsync();
+
+            if (_currentUser != null)
+            {
+                _currentLanguage = _currentUser.Language;
+                await LoadDashboardDataAsync();
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/Account/Login", true);
+            }
         }
         catch (UnauthorizedAccessException)
         {
-            // Manejar el caso en que el usuario no esté autenticado
-            // En un entorno de producción real, deberíamos redirigir a la página de login
+            NavigationManager.NavigateTo("/Account/Login", true);
+        }
+        finally
+        {
             _isLoading = false;
-            await JSRuntime.InvokeVoidAsync("alert", "No se ha podido verificar su sesión. Por favor, inicie sesión nuevamente.");
         }
     }
 
@@ -338,8 +350,6 @@ else
     {
         try
         {
-            _isLoading = true;
-
             // Cargar datos del usuario
             var user = await UserService.GetUserByIdAsync(_currentUserId);
             if (user != null)
@@ -363,12 +373,7 @@ else
         {
             // Manejar error
             Console.Error.WriteLine($"Error loading dashboard data: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
-        }
-        finally
-        {
-            _isLoading = false;
-            StateHasChanged();
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al cargar datos: {ex.Message}");
         }
     }
 
@@ -388,6 +393,13 @@ else
 
     private async Task<string> LocalizedText(string key)
     {
-        return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+        try
+        {
+            return await LocalizationService.GetLocalizedTextAsync(key, _currentLanguage);
+        }
+        catch
+        {
+            return key;
+        }
     }
 }

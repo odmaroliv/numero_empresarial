@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NumeroEmpresarial.Core.Interfaces;
-using System.Security.Claims;
 
 namespace NumeroEmpresarial.Controllers
 {
@@ -11,21 +10,32 @@ namespace NumeroEmpresarial.Controllers
         private readonly IStripeService _stripeService;
         private readonly IUserService _userService;
         private readonly IConfiguration _configuration;
+        private readonly IAuthenticationService _authService;
+
         public PaymentController(
-        IStripeService stripeService,
+            IStripeService stripeService,
             IUserService userService,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IAuthenticationService authService)
         {
             _stripeService = stripeService;
             _userService = userService;
             _configuration = configuration;
+            _authService = authService;
         }
 
-        public IActionResult Index()
+        public async Task<IActionResult> Index()
         {
+            var user = await _authService.GetCurrentUserAsync();
+            if (user == null)
+            {
+                return RedirectToAction("Login", "Account");
+            }
+
             var model = new PaymentViewModel
             {
-                PublicKey = _configuration["Stripe:PublicKey"]
+                PublicKey = _configuration["Stripe:PublicKey"],
+                Balance = user.Balance
             };
 
             return View(model);
@@ -76,7 +86,7 @@ namespace NumeroEmpresarial.Controllers
         [HttpGet]
         public async Task<IActionResult> Plans()
         {
-            int userId = GetCurrentUserId();
+            var userId = await GetCurrentUserIdAsync();
             var plans = await _userService.GetAllPlansAsync();
             var currentSubscription = await _userService.GetActiveSubscriptionAsync(userId);
 
@@ -91,9 +101,9 @@ namespace NumeroEmpresarial.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Subscribe(int planId)
+        public async Task<IActionResult> Subscribe(Guid planId)
         {
-            int userId = GetCurrentUserId();
+            var userId = await GetCurrentUserIdAsync();
 
             try
             {
@@ -148,20 +158,14 @@ namespace NumeroEmpresarial.Controllers
             return RedirectToAction("Plans");
         }
 
-        private int GetCurrentUserId()
+        private async Task<Guid> GetCurrentUserIdAsync()
         {
-            if (!User.Identity.IsAuthenticated)
+            var user = await _authService.GetCurrentUserAsync();
+            if (user == null)
             {
-                return 0;
+                throw new UnauthorizedAccessException("Usuario no autenticado");
             }
-
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
-            if (userIdClaim == null)
-            {
-                return 0;
-            }
-
-            return int.Parse(userIdClaim.Value);
+            return user.Id;
         }
     }
 }

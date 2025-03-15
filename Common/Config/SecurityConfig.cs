@@ -1,10 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
 
 namespace NumeroEmpresarial.Common.Config
-
 {
     public static class SecurityConfig
     {
@@ -24,58 +20,12 @@ namespace NumeroEmpresarial.Common.Config
                 });
             });
 
-            // Configuración de autenticación JWT
-            var jwtSettings = configuration.GetSection("JwtSettings");
-            var secretKey = jwtSettings["SecretKey"];
-
-            services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            })
-            .AddJwtBearer(options =>
-            {
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                    ValidateLifetime = true,
-                    ValidateIssuerSigningKey = true,
-                    ValidIssuer = jwtSettings["Issuer"],
-                    ValidAudience = jwtSettings["Audience"],
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
-                    ClockSkew = TimeSpan.Zero // Eliminar tolerancia de tiempo
-                };
-
-                options.Events = new JwtBearerEvents
-                {
-                    OnMessageReceived = context =>
-                    {
-                        // Permitir el token JWT desde la cookie para SignalR
-                        var accessToken = context.Request.Query["access_token"];
-                        var path = context.HttpContext.Request.Path;
-
-                        if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
-                        {
-                            context.Token = accessToken;
-                        }
-
-                        return Task.CompletedTask;
-                    }
-                };
-            });
+            // IMPORTANTE: Eliminar la configuración duplicada de JwtBearer
+            // Ya no configuramos la autenticación aquí porque se hace en Program.cs
 
             // Configurar API Key Authentication para los webhooks
-            services.AddAuthentication("ApiKey")
+            services.AddAuthentication()
                 .AddScheme<ApiKeyAuthOptions, ApiKeyAuthHandler>("ApiKey", options => { });
-
-            // Configuración de políticas de autorización
-            services.AddAuthorization(options =>
-            {
-                options.AddPolicy("RequireAdminRole", policy => policy.RequireRole("Admin"));
-                options.AddPolicy("RequireUserRole", policy => policy.RequireRole("User"));
-                options.AddPolicy("RequireApiAccess", policy => policy.RequireAuthenticatedUser());
-            });
 
             // Configuración de Anti-Forgery token
             services.AddAntiforgery(options =>
@@ -87,10 +37,11 @@ namespace NumeroEmpresarial.Common.Config
                 options.Cookie.SameSite = SameSiteMode.Strict;
             });
 
-            // Configuración de política de seguridad de contenido (CSP)
-            services.AddControllersWithViews(options =>
+            // Configuración de controladores para validar automáticamente anti-forgery tokens
+            services.AddControllers(options =>
             {
-                options.Filters.Add(new Microsoft.AspNetCore.Mvc.Filters.AutoValidateAntiforgeryTokenAttribute());
+                // Validación automática de tokens anti-forgery en todas las solicitudes POST
+                options.Filters.Add(new Microsoft.AspNetCore.Mvc.AutoValidateAntiforgeryTokenAttribute());
             });
 
             return services;
@@ -108,7 +59,7 @@ namespace NumeroEmpresarial.Common.Config
             app.Use(async (context, next) =>
             {
                 // Política de seguridad de contenido (CSP)
-                context.Response.Headers.Append("Content-Security-Policy",
+                context.Response.Headers.Add("Content-Security-Policy",
                     "default-src 'self'; " +
                     "script-src 'self' https://js.stripe.com 'unsafe-inline'; " +
                     "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; " +
@@ -119,27 +70,26 @@ namespace NumeroEmpresarial.Common.Config
                     "object-src 'none'");
 
                 // Prevenir ataques de MIME-sniffing
-                context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+                context.Response.Headers.Add("X-Content-Type-Options", "nosniff");
 
                 // Prevenir clickjacking
-                context.Response.Headers.Append("X-Frame-Options", "DENY");
+                context.Response.Headers.Add("X-Frame-Options", "DENY");
 
                 // Activar protección XSS en navegadores modernos
-                context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+                context.Response.Headers.Add("X-XSS-Protection", "1; mode=block");
 
                 // Política de referrer
-                context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+                context.Response.Headers.Add("Referrer-Policy", "strict-origin-when-cross-origin");
 
                 // Feature Policy
-                context.Response.Headers.Append("Permissions-Policy",
+                context.Response.Headers.Add("Permissions-Policy",
                     "camera=(), microphone=(), geolocation=(), payment=()");
 
                 await next();
             });
 
-            // Usar autenticación y autorización
-            app.UseAuthentication();
-            app.UseAuthorization();
+            // No es necesario configurar autenticación y autorización aquí
+            // ya que se hace en Program.cs
 
             return app;
         }

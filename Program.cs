@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using NumeroEmpresarial.Common.Config;
 using NumeroEmpresarial.Components;
 using NumeroEmpresarial.Core.Interfaces;
 using NumeroEmpresarial.Core.Services;
@@ -28,17 +30,29 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
     options.SupportedUICultures = supportedCultures;
 });
 
-// Configurar PostgreSQL
+// IMPORTANTE: Configurar PostgreSQL - SOLO UNA VEZ
+// Eliminamos la duplicación y nos quedamos con una sola configuración de DbContext
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(
-        builder.Configuration.GetConnectionString("DefaultConnection")
-    )
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsqlOptions =>
+        {
+            npgsqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(30),
+                errorCodesToAdd: null);
+
+            npgsqlOptions.CommandTimeout(30);
+            //npgsqlOptions.MigrationsAssembly("NumeroEmpresarial.Data");
+        })
+    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
 );
 
 // Agregar RazorComponents
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// IMPORTANTE: Configurar autenticación SOLO UNA VEZ
 // Configurar autenticación con cookies y JWT
 builder.Services.AddAuthentication(options =>
 {
@@ -49,9 +63,9 @@ builder.Services.AddAuthentication(options =>
 {
     options.Cookie.HttpOnly = true;
     options.ExpireTimeSpan = TimeSpan.FromDays(7);
-    options.LoginPath = "/login";
-    options.LogoutPath = "/logout";
-    options.AccessDeniedPath = "/access-denied";
+    options.LoginPath = "/Account/Login";
+    options.LogoutPath = "/Account/Logout";
+    options.AccessDeniedPath = "/Account/AccessDenied";
     options.SlidingExpiration = true;
 })
 .AddJwtBearer(options =>
@@ -70,81 +84,156 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddAuthorization();
+// Autorización
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("RequireAdminRole", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("RequireUserRole", policy => policy.RequireRole("User"));
+    options.AddPolicy("RequireApiAccess", policy => policy.RequireAuthenticatedUser());
+});
 
-// Agregar HttpContextAccessor
-builder.Services.AddHttpContextAccessor();
+// Agregar autenticación para Blazor
+builder.Services.AddScoped<AuthenticationStateProvider, ServerAuthenticationStateProvider>();
 
-// Agregar servicios de memoria caché
-builder.Services.AddMemoryCache();
-
-// Agregar soporte para controladores
-builder.Services.AddControllers();
-
-// Registrar servicios
+// Servicios core
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IPhoneNumberService, PhoneNumberService>();
 builder.Services.AddScoped<IMessageWindowService, MessageWindowService>();
 builder.Services.AddScoped<IPlivoService, PlivoService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
-builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 builder.Services.AddScoped<ILocalizationService, LocalizationService>();
+builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 
-// Construir la aplicación
+// Controladores para API
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = null;
+        options.JsonSerializerOptions.WriteIndented = true;
+    });
+
+// IMPORTANTE: Modificamos para usar las optimizaciones pero SIN el DbContextPool
+builder.Services.AddPerformanceOptimizationsWithoutDbContextPool(builder.Configuration);
+
+// Configuraciones de seguridad
+builder.Services.AddAppSecurity(builder.Configuration);
+
+// CORS - Versión corregida
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecificOrigins",
+        policyBuilder =>
+        {
+            var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+
+            if (allowedOrigins != null && allowedOrigins.Length > 0)
+            {
+                policyBuilder
+                    .WithOrigins(allowedOrigins)
+                    .AllowAnyMethod()
+                    .AllowAnyHeader()
+                    .AllowCredentials();
+            }
+            else
+            {
+                // Configuración por defecto si no hay orígenes configurados
+                policyBuilder
+                    .WithOrigins("https://localhost:5001")
+                    .AllowAnyMethod()
+                    .AllowAnyHeader()
+                    .AllowCredentials();
+            }
+        });
+});
+
+// Configuración de anti-forgery para ASP.NET Core 8
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-XSRF-TOKEN";
+    options.Cookie.Name = "XSRF-TOKEN";
+    options.Cookie.HttpOnly = false; // Necesario para JavaScript
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.FormFieldName = "__RequestVerificationToken";
+});
+
+// Servicios adicionales
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddMemoryCache();
+builder.Services.AddResponseCompression();
+builder.Services.AddResponseCaching();
+builder.Services.AddHttpClient();
+
 var app = builder.Build();
 
-// Configurar el pipeline HTTP
-if (!app.Environment.IsDevelopment())
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseDeveloperExceptionPage();
+}
+else
+{
+    app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
-app.UseStaticFiles();
-
-// Configurar localización
-var locOptions = app.Services.GetService<IOptions<RequestLocalizationOptions>>();
-if (locOptions != null)
+// Sembrar datos iniciales
+using (var scope = app.Services.CreateScope())
 {
-    app.UseRequestLocalization(locOptions.Value);
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<ApplicationDbContext>();
+
+        // Asegurarse de que la base de datos está creada y aplicar migraciones
+        context.Database.Migrate();
+
+        // Sembrar datos si es necesario
+        // Nota: Aquí verificamos si ya hay datos en lugar de comprobar migraciones pendientes
+        if (!context.Users.Any())
+        {
+            SeedData.Initialize(context);
+        }
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Ocurrió un error al inicializar la base de datos.");
+    }
 }
 
-app.UseRouting();
+// Usar optimizaciones configuradas
+app.UsePerformanceOptimizations();
 
+// Usar seguridad configurada
+app.UseAppSecurity(builder.Configuration);
+
+// Middleware básico
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+app.UseRouting();
+app.UseCors("AllowSpecificOrigins");
+
+// Autenticación y autorización
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseAntiforgery();
 
-// Mapear controladores API
+// Mapeo de endpoints
 app.MapControllers();
-
-// Mapear endpoints de Razor components
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-// Mapear rutas para webhooks
-app.MapControllerRoute(
-    name: "webhooks",
-    pattern: "api/webhook/{action=Index}/{id?}",
-    defaults: new { controller = "Webhook" });
-
-// Inicializar la base de datos
-using (var scope = app.Services.CreateScope())
+// Middleware para capturar rutas no encontradas
+app.Use(async (context, next) =>
 {
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-
-    try
+    await next();
+    if (context.Response.StatusCode == 404 && !context.Response.HasStarted)
     {
-        context.Database.Migrate();
-        logger.LogInformation("Database migrated successfully");
+        context.Request.Path = "/Error";
+        await next();
     }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred while migrating the database");
-    }
-}
+});
 
 app.Run();

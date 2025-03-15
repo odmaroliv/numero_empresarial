@@ -1,5 +1,8 @@
 ﻿using NumeroEmpresarial.Core.Interfaces;
-using Plivo;
+using NumeroEmpresarial.Domain.Models;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 
 namespace NumeroEmpresarial.Core.Services
 {
@@ -7,19 +10,24 @@ namespace NumeroEmpresarial.Core.Services
     {
         private readonly string _authId;
         private readonly string _authToken;
-        private readonly string _apiVersion;
-        private readonly PlivoApi _plivoClient;
+        private readonly string _apiBaseUrl;
+        private readonly HttpClient _httpClient;
         private readonly IConfiguration _configuration;
         private readonly ILogger<PlivoService> _logger;
 
-        public PlivoService(IConfiguration configuration, ILogger<PlivoService> logger)
+        public PlivoService(IConfiguration configuration, ILogger<PlivoService> logger, HttpClient httpClient = null)
         {
             _configuration = configuration;
             _logger = logger;
             _authId = _configuration["Plivo:AuthId"];
             _authToken = _configuration["Plivo:AuthToken"];
-            _apiVersion = _configuration["Plivo:ApiVersion"];
-            _plivoClient = new PlivoApi(_authId, _authToken);
+            _apiBaseUrl = "https://api.plivo.com/v1/Account/" + _authId;
+
+            _httpClient = httpClient ?? new HttpClient();
+
+            // Configurar autenticación HTTP básica
+            var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{_authId}:{_authToken}"));
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
         }
 
         public async Task<List<PhoneNumberResource>> SearchAvailableNumbersAsync(string countryIso, string type = null, string pattern = null)
@@ -28,26 +36,28 @@ namespace NumeroEmpresarial.Core.Services
             {
                 _logger.LogInformation($"Buscando números disponibles: país={countryIso}, tipo={type}, patrón={pattern}");
 
-                var options = new Dictionary<string, object>
-                {
-                    { "country_iso", countryIso },
-                    { "limit", 20 }
-                };
+                var queryParams = new List<string> { $"country_iso={countryIso}", "limit=20" };
 
                 if (!string.IsNullOrEmpty(type))
                 {
-                    options.Add("type", type); // "local", "tollfree", "mobile"
+                    queryParams.Add($"type={type}");
                 }
 
                 if (!string.IsNullOrEmpty(pattern))
                 {
-                    options.Add("pattern", pattern);
+                    queryParams.Add($"pattern={pattern}");
                 }
 
-                var response = await _plivoClient.PhoneNumber.List(options);
+                var url = $"{_apiBaseUrl}/PhoneNumber/?{string.Join("&", queryParams)}";
+                var response = await _httpClient.GetAsync(url);
 
-                _logger.LogInformation($"Números encontrados: {response.Objects.Count}");
-                return response.Objects;
+                response.EnsureSuccessStatusCode();
+
+                var content = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<PlivoPhoneNumberResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                _logger.LogInformation($"Números encontrados: {result?.Objects?.Count ?? 0}");
+                return result?.Objects ?? new List<PhoneNumberResource>();
             }
             catch (Exception ex)
             {
@@ -62,15 +72,17 @@ namespace NumeroEmpresarial.Core.Services
             {
                 _logger.LogInformation($"Alquilando número: {phoneNumber}");
 
-                var options = new Dictionary<string, object>
-                {
-                    { "number", phoneNumber }
-                };
+                var data = new { numbers = phoneNumber };
+                var content = new StringContent(JsonSerializer.Serialize(data), Encoding.UTF8, "application/json");
 
-                var response = await _plivoClient.PhoneNumber.Buy(options);
+                var response = await _httpClient.PostAsync($"{_apiBaseUrl}/PhoneNumber/{phoneNumber}/", content);
+                response.EnsureSuccessStatusCode();
 
-                _logger.LogInformation($"Número alquilado: {response.Number}, ID: {response.Id}");
-                return response.Id;
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<PlivoBuyResponse>(responseContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                _logger.LogInformation($"Número alquilado: {result?.Number}, ID: {result?.Id}");
+                return result?.Id;
             }
             catch (Exception ex)
             {
@@ -85,7 +97,8 @@ namespace NumeroEmpresarial.Core.Services
             {
                 _logger.LogInformation($"Liberando número con ID: {plivoPhoneNumberId}");
 
-                await _plivoClient.Number.Delete(plivoPhoneNumberId);
+                var response = await _httpClient.DeleteAsync($"{_apiBaseUrl}/Number/{plivoPhoneNumberId}/");
+                response.EnsureSuccessStatusCode();
 
                 _logger.LogInformation($"Número liberado con éxito: {plivoPhoneNumberId}");
                 return true;
@@ -103,17 +116,27 @@ namespace NumeroEmpresarial.Core.Services
             {
                 _logger.LogInformation($"Enviando SMS desde {from} a {to}");
 
-                var options = new Dictionary<string, object>
+                var data = new
                 {
-                    { "src", from },
-                    { "dst", to },
-                    { "text", text }
+                    src = from,
+                    dst = to,
+                    text = text
                 };
 
-                var response = await _plivoClient.Message.Create(options);
+                var content = new StringContent(JsonSerializer.Serialize(data), Encoding.UTF8, "application/json");
 
-                _logger.LogInformation($"SMS enviado con éxito, ID: {response.MessageUuid[0]}");
-                return response;
+                var response = await _httpClient.PostAsync($"{_apiBaseUrl}/Message/", content);
+                response.EnsureSuccessStatusCode();
+
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<MessageResponse>(responseContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (result?.MessageUuid?.Count > 0)
+                {
+                    _logger.LogInformation($"SMS enviado con éxito, ID: {result.MessageUuid[0]}");
+                }
+
+                return result;
             }
             catch (Exception ex)
             {
@@ -128,12 +151,11 @@ namespace NumeroEmpresarial.Core.Services
             {
                 _logger.LogInformation($"Configurando webhook para número {plivoPhoneNumberId}: {webhookUrl}");
 
-                var options = new Dictionary<string, object>
-                {
-                    { "message_url", webhookUrl }
-                };
+                var data = new { message_url = webhookUrl };
+                var content = new StringContent(JsonSerializer.Serialize(data), Encoding.UTF8, "application/json");
 
-                await _plivoClient.Number.Update(plivoPhoneNumberId, options);
+                var response = await _httpClient.PostAsync($"{_apiBaseUrl}/Number/{plivoPhoneNumberId}/", content);
+                response.EnsureSuccessStatusCode();
 
                 _logger.LogInformation("Webhook configurado con éxito");
                 return true;
@@ -151,10 +173,14 @@ namespace NumeroEmpresarial.Core.Services
             {
                 _logger.LogInformation("Obteniendo números de la cuenta");
 
-                var response = await _plivoClient.PhoneNumber.List();
+                var response = await _httpClient.GetAsync($"{_apiBaseUrl}/Number/");
+                response.EnsureSuccessStatusCode();
 
-                _logger.LogInformation($"Números obtenidos: {response.Objects.Count}");
-                return response.Objects;
+                var content = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<PlivoPhoneNumberResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                _logger.LogInformation($"Números obtenidos: {result?.Objects?.Count ?? 0}");
+                return result?.Objects ?? new List<PhoneNumberResource>();
             }
             catch (Exception ex)
             {
@@ -169,17 +195,28 @@ namespace NumeroEmpresarial.Core.Services
             {
                 _logger.LogInformation($"Obteniendo costo de número: {phoneNumber}");
 
-                var availableNumbers = await SearchAvailableNumbersAsync(
-                    "US", // Puedes hacer esto dinámico basado en el prefijo del número
-                    null,
-                    phoneNumber);
+                string countryCode = "US"; // Por defecto, puedes extraer el código de país del número
+                if (phoneNumber.StartsWith("+"))
+                {
+                    // Extraer código de país básico (muy simplificado)
+                    if (phoneNumber.StartsWith("+1"))
+                        countryCode = "US";
+                    else if (phoneNumber.StartsWith("+44"))
+                        countryCode = "GB";
+                    else if (phoneNumber.StartsWith("+34"))
+                        countryCode = "ES";
+                    else if (phoneNumber.StartsWith("+52"))
+                        countryCode = "MX";
+                }
+
+                var availableNumbers = await SearchAvailableNumbersAsync(countryCode);
 
                 var matchingNumber = availableNumbers
-                    .FirstOrDefault(n => n.Number == phoneNumber);
+                    .FirstOrDefault(n => n.Number == phoneNumber || n.Number == "+" + phoneNumber);
 
                 if (matchingNumber != null)
                 {
-                    decimal cost = decimal.Parse(matchingNumber.MonthlyRentalRate);
+                    decimal cost = decimal.TryParse(matchingNumber.MonthlyRentalRate, out var parsed) ? parsed : 1.99m;
                     _logger.LogInformation($"Costo mensual para {phoneNumber}: ${cost}");
                     return cost;
                 }
@@ -194,5 +231,17 @@ namespace NumeroEmpresarial.Core.Services
                 return 1.99m; // Valor predeterminado en caso de error
             }
         }
+    }
+
+    // Clases auxiliares para deserializar respuestas de Plivo
+    public class PlivoPhoneNumberResponse
+    {
+        public List<PhoneNumberResource> Objects { get; set; }
+    }
+
+    public class PlivoBuyResponse
+    {
+        public string Number { get; set; }
+        public string Id { get; set; }
     }
 }
